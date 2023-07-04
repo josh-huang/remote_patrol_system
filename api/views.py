@@ -10,3 +10,5 @@ class RoomView(generics.CreateAPIView):
     def get(self, request):
         queryset = Room.objects.all()
         serializer_class = RoomSerializers
+        
+class
