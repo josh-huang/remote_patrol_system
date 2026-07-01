@@ -74,6 +74,36 @@ const Sidebar = () => {
             )}
           </MenuItem>
 
+<<<<<<< HEAD
+=======
+          {!isCollapsed && (
+            <Box mb="25px">
+              <Box display="flex" justifyContent="center" alignItems="center">
+                <img
+                  alt="profile-user"
+                  width="100px"
+                  height="100px"
+                  src={`../../assets/user.png`}
+                  style={{ cursor: "pointer", borderRadius: "50%" }}
+                />
+              </Box>
+              <Box textAlign="center">
+                <Typography
+                  variant="h2"
+                  color={colors.grey[100]}
+                  fontWeight="bold"
+                  sx={{ m: "10px 0 0 0" }}
+                >
+                  Joshua
+                </Typography>
+                <Typography variant="h5" color={colors.greenAccent[500]}>
+                  Control Centre Admin
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
+>>>>>>> 02b7eceb7089738a0269c6f33ad9366e175cbf09
           <Box paddingLeft={isCollapsed ? undefined : "10%"}>
             <Item
               title="Dashboard"
@@ -83,12 +113,32 @@ const Sidebar = () => {
               setSelected={setSelected}
             />
             <Item
+<<<<<<< HEAD
               title="AI Assistant"
               to="/assistant"
               icon={<AutoAwesomeOutlinedIcon />}
+=======
+              title="Manage Team"
+              to="/team"
+              icon={<PeopleOutlinedIcon />}
               selected={selected}
               setSelected={setSelected}
             />
+            {/* <Item
+              title="Contacts Information"
+              to="/contacts"
+              icon={<ContactsOutlinedIcon />}
+              selected={selected}
+              setSelected={setSelected}
+            />
+            <Item
+              title="Invoices Balances"
+              to="/invoices"
+              icon={<ReceiptOutlinedIcon />}
+>>>>>>> 02b7eceb7089738a0269c6f33ad9366e175cbf09
+              selected={selected}
+              setSelected={setSelected}
+            /> */}
 
             <Typography
               variant="h6"

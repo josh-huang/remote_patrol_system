@@ -1,0 +1,32 @@
+# Core framework
+Django>=4.2,<5.0
+djangorestframework>=3.14,<3.16
+
+# Auth (JWT)
+djangorestframework-simplejwt>=5.3,<6.0
+
+# Cross-origin requests from the React dashboard / Flutter app
+django-cors-headers>=4.3,<5.0
+
+# OpenAPI schema + Swagger UI for the mobile (Flutter) team
+drf-spectacular>=0.27,<0.28
+
+# MySQL driver (pure-python, cross-platform, no native build needed)
+PyMySQL>=1.1,<2.0
+cryptography>=42.0
+
+# Environment-based settings
+django-environ>=0.11,<0.13
+
+# Image handling for incident / location photos
+Pillow>=10.2
+
+# Large Language Model integration (OpenAI-compatible). Optional at runtime:
+# the AI service degrades to a deterministic mock when no API key is set.
+openai>=1.30,<2.0
+
+# Production WSGI server (used by the Docker image)
+gunicorn>=21.2
+
+# Filtering support for list endpoints
+django-filter>=24.1

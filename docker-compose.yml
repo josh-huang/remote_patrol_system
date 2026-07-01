@@ -1,0 +1,54 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-patrol}
+      MYSQL_USER: ${MYSQL_USER:-patrol}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-patrol}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpatrol}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_HOST: db
+      USE_SQLITE: "False"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npm install --legacy-peer-deps && npm start"
+    environment:
+      # Point the dashboard at the Django API and pass the Maps key through.
+      REACT_APP_API_BASE_URL: http://localhost:8000/api/v1
+      REACT_APP_GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - web
+
+volumes:
+  mysql_data:
