@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "fleet",
     "patrol",
     "incidents",
+    "comms",
     "agent",
 ]
 
@@ -213,6 +214,13 @@ LLM_API_KEY = env("LLM_API_KEY", default="")
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.openai.com/v1")
 LLM_TEXT_MODEL = env("LLM_TEXT_MODEL", default="gpt-4o-mini")
 LLM_VISION_MODEL = env("LLM_VISION_MODEL", default="gpt-4o-mini")
+
+# Command-centre hotline shown to guards in the mobile app ("call command").
+COMMAND_CENTRE_PHONE = env("COMMAND_CENTRE_PHONE", default="+65 6000 0000")
+
+# Road-network model used by the route planner (see core/services/routing.py).
+ROUTING_CIRCUITY = env.float("ROUTING_CIRCUITY", default=1.3)
+ROUTING_NEIGHBOURS = env.int("ROUTING_NEIGHBOURS", default=5)
 
 # Google Maps key is consumed by the frontend; kept here for reference/docs.
 GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")

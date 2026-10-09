@@ -1,7 +1,7 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from core.permissions import IsCommandCentre
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -22,7 +22,7 @@ class ChatView(APIView):
     (returned as pending actions for confirmation).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCommandCentre]
 
     @extend_schema(request=ChatRequestSerializer, responses=AgentMessageSerializer)
     def post(self, request):
@@ -51,7 +51,7 @@ class ChatView(APIView):
 
 class AgentConversationViewSet(viewsets.ModelViewSet):
     serializer_class = AgentConversationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCommandCentre]
 
     def get_queryset(self):
         return AgentConversation.objects.filter(user=self.request.user)
@@ -74,7 +74,7 @@ class AgentActionViewSet(viewsets.ReadOnlyModelViewSet):
     """Inspect and resolve (confirm/reject) proposed agent actions."""
 
     serializer_class = AgentActionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCommandCentre]
     queryset = AgentAction.objects.all()
     filterset_fields = ["status", "origin", "tool_name"]
 

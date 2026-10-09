@@ -12,15 +12,16 @@ the system. Tools are classified as:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from typing import Any, Callable
 
 from django.db.models import Sum
+from django.utils import timezone
 
 from core.services import emissions, routing
 from fleet.models import Location, Vehicle
-from incidents.models import IncidentReport
-from patrol.models import PatrolPlan, PatrolRecord, PatrolStop
+from incidents.models import EmergencyAlert, IncidentReport
+from patrol import services
+from patrol.models import PatrolPlan, PatrolRecord
 
 READ = "read"
 WRITE = "write"
@@ -95,10 +96,7 @@ def execute(name: str, args: dict) -> dict:
 # Shared helpers
 # ---------------------------------------------------------------------------
 def _active_nodes() -> list[routing.Node]:
-    return [
-        routing.Node(l.id, l.name, l.latitude, l.longitude, l.priority)
-        for l in Location.objects.filter(is_active=True)
-    ]
+    return [services.location_node(l) for l in Location.objects.filter(is_active=True)]
 
 
 # ---------------------------------------------------------------------------
@@ -125,13 +123,78 @@ def get_dashboard_summary() -> dict:
         "total_emission_kg": round(
             PatrolRecord.objects.aggregate(t=Sum("emission_kg"))["t"] or 0.0, 3
         ),
+        "vehicles_operational": Vehicle.operational().count(),
+        "active_alerts": EmergencyAlert.objects.exclude(
+            status=EmergencyAlert.Status.RESOLVED
+        ).count(),
+        "active_plans": PatrolPlan.objects.filter(status=PatrolPlan.Status.ACTIVE).count(),
+    }
+
+
+@tool(
+    name="list_alerts",
+    description="List emergency alerts on the noticeboard (default: not resolved), "
+    "with the dispatched vehicle and re-routing savings.",
+    parameters={
+        "type": "object",
+        "properties": {"include_resolved": {"type": "boolean", "default": False}},
+    },
+    kind=READ,
+)
+def list_alerts(include_resolved: bool = False) -> dict:
+    qs = EmergencyAlert.objects.select_related("location", "assigned_vehicle")
+    if not include_resolved:
+        qs = qs.exclude(status=EmergencyAlert.Status.RESOLVED)
+    return {
+        "alerts": [
+            {
+                "id": a.id,
+                "location_id": a.location_id,
+                "location_name": a.location.name,
+                "status": a.status,
+                "description": a.description,
+                "vehicle": a.assigned_vehicle.plate_number if a.assigned_vehicle else None,
+                "saved_km": a.saved_km,
+                "saved_kg": a.saved_kg,
+            }
+            for a in qs[:20]
+        ]
+    }
+
+
+@tool(
+    name="get_vehicle_route",
+    description="Get a vehicle's current patrol route: ordered stops, which are "
+    "visited, and its next location.",
+    parameters={
+        "type": "object",
+        "properties": {"vehicle_id": {"type": "integer"}},
+        "required": ["vehicle_id"],
+    },
+    kind=READ,
+)
+def get_vehicle_route(vehicle_id: int) -> dict:
+    vehicle = Vehicle.objects.filter(id=vehicle_id).first()
+    if not vehicle:
+        return {"error": f"Vehicle {vehicle_id} not found."}
+    plan, stops = services.vehicle_route(vehicle)
+    nxt = next((s for s in stops if not s.is_visited), None)
+    return {
+        "vehicle": vehicle.plate_number,
+        "plan": plan.name if plan else None,
+        "stops": [
+            {"order": s.order, "location": s.location.name, "visited": s.is_visited, "source": s.source}
+            for s in stops
+        ],
+        "next_location": nxt.location.name if nxt else None,
+        "remaining_km": round(sum(s.leg_distance_km for s in stops if not s.is_visited), 3),
     }
 
 
 @tool(
     name="list_vehicles",
-    description="List patrol vehicles with plate, engine type, status and "
-    "availability. Set available_only to filter to ready vehicles.",
+    description="List patrol vehicles with plate, engine type, health status and "
+    "availability. Set available_only to filter to operational vehicles.",
     parameters={
         "type": "object",
         "properties": {
@@ -141,9 +204,7 @@ def get_dashboard_summary() -> dict:
     kind=READ,
 )
 def list_vehicles(available_only: bool = False) -> dict:
-    qs = Vehicle.objects.all()
-    if available_only:
-        qs = qs.filter(is_available=True)
+    qs = Vehicle.operational() if available_only else Vehicle.objects.all()
     return {
         "vehicles": [
             {
@@ -152,6 +213,7 @@ def list_vehicles(available_only: bool = False) -> dict:
                 "engine_type": v.engine_type,
                 "maintenance_status": v.maintenance_status,
                 "is_available": v.is_available,
+                "is_operational": v.is_operational,
                 "current_latitude": v.current_latitude,
                 "current_longitude": v.current_longitude,
             }
@@ -259,7 +321,7 @@ def find_shortest_path(
     source_location_id: int, target_location_id: int, algorithm: str = "dijkstra"
 ) -> dict:
     nodes = _active_nodes()
-    graph = routing.Graph.complete_from_nodes(nodes)
+    graph = services.build_graph(nodes)
     result = routing.shortest_path(
         graph, source_location_id, target_location_id, algorithm
     )
@@ -296,7 +358,7 @@ def estimate_emissions(distance_km: float, engine_type: str = "petrol") -> dict:
     kind=READ,
 )
 def generate_report(period: str = "daily") -> dict:
-    today = date.today()
+    today = timezone.localdate()
     start = today.replace(day=1) if period == "monthly" else today
     records = PatrolRecord.objects.filter(created_at__date__gte=start)
     incidents = IncidentReport.objects.filter(created_at__date__gte=start)
@@ -321,87 +383,120 @@ def generate_report(period: str = "daily") -> dict:
 # ---------------------------------------------------------------------------
 @tool(
     name="create_patrol_plan",
-    description="Create a patrol plan and auto-generate an optimised, "
-    "priority-aware route across the given vehicles. location_ids optional "
-    "(defaults to all active locations).",
+    description="Create a patrol plan for today and auto-generate an optimised, "
+    "priority-aware route. vehicle_ids defaults to every operational vehicle "
+    "and location_ids to every active location.",
     parameters={
         "type": "object",
         "properties": {
             "name": {"type": "string"},
             "vehicle_ids": {"type": "array", "items": {"type": "integer"}},
             "location_ids": {"type": "array", "items": {"type": "integer"}},
-            "algorithm": {"type": "string", "default": "dijkstra"},
+            "algorithm": {
+                "type": "string",
+                "enum": ["dijkstra", "bellman_ford", "floyd_warshall"],
+                "default": "dijkstra",
+            },
         },
-        "required": ["name", "vehicle_ids"],
+        "required": ["name"],
     },
     kind=WRITE,
     summarizer=lambda a: (
         f"Create plan '{a.get('name', 'Untitled')}' across "
-        f"{len(a.get('vehicle_ids', []))} vehicle(s) and auto-route it."
+        f"{len(a.get('vehicle_ids') or []) or 'all operational'} vehicle(s) and auto-route it."
     ),
 )
 def create_patrol_plan(
     name: str,
-    vehicle_ids: list[int],
+    vehicle_ids: list[int] = None,
     location_ids: list[int] = None,
     algorithm: str = "dijkstra",
 ) -> dict:
-    from django.db import transaction
-
-    EMERGENCY_BOOST = 100
-    location_qs = Location.objects.filter(is_active=True)
-    if location_ids:
-        location_qs = location_qs.filter(id__in=location_ids)
-    locations = list(location_qs)
-    vehicles = list(Vehicle.objects.filter(id__in=vehicle_ids))
-    if not locations or not vehicles:
-        return {"error": "Need at least one location and one vehicle."}
-
-    nodes = [
-        routing.Node(
-            l.id,
-            l.name,
-            l.latitude,
-            l.longitude,
-            l.priority + (EMERGENCY_BOOST if l.emergency_trigger else 0),
+    try:
+        plan = services.create_daily_plan(
+            name=name,
+            vehicle_ids=vehicle_ids or None,
+            location_ids=location_ids or None,
+            algorithm=algorithm,
         )
-        for l in locations
-    ]
-    graph = routing.Graph.complete_from_nodes(nodes)
-    planned = routing.plan_patrol_routes(nodes, num_vehicles=len(vehicles))
-
-    with transaction.atomic():
-        plan = PatrolPlan.objects.create(
-            name=name, date=date.today(), status=PatrolPlan.Status.ACTIVE
-        )
-        total_distance = total_emission = 0.0
-        for route in planned:
-            vehicle = vehicles[route.vehicle_index]
-            prev = None
-            for order, loc_id in enumerate(route.stop_order):
-                leg = graph.adjacency[prev].get(loc_id, 0.0) if prev else 0.0
-                PatrolStop.objects.create(
-                    plan=plan,
-                    vehicle=vehicle,
-                    location_id=loc_id,
-                    order=order,
-                    leg_distance_km=round(leg, 3),
-                )
-                prev = loc_id
-                total_distance += leg
-            total_emission += emissions.estimate_emission_kg(
-                route.total_distance_km, vehicle.engine_type
-            )
-        plan.total_distance_km = round(total_distance, 3)
-        plan.total_emission_kg = round(total_emission, 4)
-        plan.save(update_fields=["total_distance_km", "total_emission_kg"])
-
+    except services.PlanningError as exc:
+        return {"error": str(exc)}
     return {
         "plan_id": plan.id,
         "name": plan.name,
         "total_distance_km": plan.total_distance_km,
         "total_emission_kg": plan.total_emission_kg,
+        "baseline_distance_km": plan.baseline_distance_km,
+        "emission_saved_kg": plan.emission_saved_kg,
         "stops": plan.stops.count(),
+    }
+
+
+@tool(
+    name="raise_emergency_alert",
+    description="Raise an emergency alert at a location (puts it on the "
+    "command-centre noticeboard and prioritises it in planning).",
+    parameters={
+        "type": "object",
+        "properties": {
+            "location_id": {"type": "integer"},
+            "description": {"type": "string"},
+        },
+        "required": ["location_id"],
+    },
+    kind=WRITE,
+    summarizer=lambda a: f"Raise an emergency alert at location #{a.get('location_id')}.",
+)
+def raise_emergency_alert(location_id: int, description: str = "") -> dict:
+    from incidents.models import EmergencyAlert
+
+    loc = Location.objects.filter(id=location_id).first()
+    if not loc:
+        return {"error": f"Location {location_id} not found."}
+    alert, created = services.raise_alert(
+        loc, description=description, source=EmergencyAlert.Source.AGENT
+    )
+    return {"alert_id": alert.id, "location": loc.name, "created": created}
+
+
+@tool(
+    name="dispatch_emergency",
+    description="Dispatch a vehicle to an active emergency alert and dynamically "
+    "re-plan the rest of its route from the emergency site (no driving back). "
+    "vehicle_id defaults to the nearest operational vehicle.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "alert_id": {"type": "integer"},
+            "vehicle_id": {"type": "integer"},
+        },
+        "required": ["alert_id"],
+    },
+    kind=WRITE,
+    summarizer=lambda a: (
+        f"Dispatch {'vehicle #' + str(a['vehicle_id']) if a.get('vehicle_id') else 'the nearest vehicle'} "
+        f"to alert #{a.get('alert_id')} and re-route it."
+    ),
+)
+def dispatch_emergency(alert_id: int, vehicle_id: int = None) -> dict:
+    from incidents.models import EmergencyAlert
+
+    alert = EmergencyAlert.objects.filter(id=alert_id).first()
+    if not alert:
+        return {"error": f"Alert {alert_id} not found."}
+    vehicle = Vehicle.objects.filter(id=vehicle_id).first() if vehicle_id else None
+    try:
+        outcome = services.dispatch_alert(alert, vehicle)
+    except services.PlanningError as exc:
+        return {"error": str(exc)}
+    return {
+        "alert_id": alert.id,
+        "vehicle": outcome.vehicle.plate_number,
+        "new_route": alert.reroute_detail.get("new_order_names"),
+        "rerouted_km": alert.rerouted_km,
+        "baseline_km": alert.baseline_km,
+        "saved_km": alert.saved_km,
+        "saved_kg": alert.saved_kg,
     }
 
 
@@ -421,6 +516,8 @@ def create_patrol_plan(
     f"'{a.get('status')}'.",
 )
 def update_incident_status(incident_id: int, status: str) -> dict:
+    if status not in IncidentReport.Status.values:
+        return {"error": f"Invalid status '{status}'."}
     inc = IncidentReport.objects.filter(id=incident_id).first()
     if not inc:
         return {"error": f"Incident {incident_id} not found."}

@@ -22,6 +22,7 @@ api_v1 = [
     path("", include("fleet.urls")),
     path("", include("patrol.urls")),
     path("", include("incidents.urls")),
+    path("", include("comms.urls")),
     path("", include("agent.urls")),
     path("", include("core.urls")),
 ]

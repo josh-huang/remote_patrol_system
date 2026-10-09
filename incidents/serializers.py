@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import IncidentImage, IncidentReport
+from .models import EmergencyAlert, IncidentImage, IncidentReport
 
 
 class IncidentImageSerializer(serializers.ModelSerializer):
@@ -57,3 +57,45 @@ class IncidentReportSerializer(serializers.ModelSerializer):
             "ai_analyzed_at",
             "created_at",
         ]
+
+
+class EmergencyAlertSerializer(serializers.ModelSerializer):
+    location_name = serializers.CharField(source="location.name", read_only=True)
+    latitude = serializers.FloatField(source="location.latitude", read_only=True)
+    longitude = serializers.FloatField(source="location.longitude", read_only=True)
+    vehicle_plate = serializers.CharField(
+        source="assigned_vehicle.plate_number", read_only=True, default=None
+    )
+
+    class Meta:
+        model = EmergencyAlert
+        fields = [
+            "id",
+            "location",
+            "location_name",
+            "latitude",
+            "longitude",
+            "description",
+            "source",
+            "status",
+            "incident",
+            "raised_by",
+            "assigned_vehicle",
+            "vehicle_plate",
+            "dispatched_at",
+            "resolved_at",
+            "baseline_km",
+            "rerouted_km",
+            "saved_km",
+            "saved_kg",
+            "reroute_detail",
+            "created_at",
+        ]
+        read_only_fields = [f for f in fields if f not in ("location", "description", "source")]
+
+
+class DispatchRequestSerializer(serializers.Serializer):
+    vehicle_id = serializers.IntegerField(required=False, allow_null=True)
+    algorithm = serializers.ChoiceField(
+        choices=["dijkstra", "bellman_ford", "floyd_warshall"], default="dijkstra"
+    )
