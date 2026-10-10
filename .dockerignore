@@ -9,3 +9,8 @@ frontend/build/
 .git/
 .venv/
 venv/
+frontend/
+mobile/
+docs/
+*.docx
+*.pdf
