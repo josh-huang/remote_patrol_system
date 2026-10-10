@@ -14,6 +14,9 @@ It has three parts:
 | Command-centre dashboard (`frontend/`) | React 18, MUI, Nivo, Google Maps | admins |
 | Duty-phone app (`mobile/`) | Flutter | the guards in each vehicle |
 
+📄 Full write-up: [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) — problem
+statement, solution, algorithms, technology stack and evaluation.
+
 An optional AI agent ("Sentinel") lets operators drive the system in natural
 language and reacts to serious incidents; every state-changing action it
 proposes waits for an operator to confirm.
