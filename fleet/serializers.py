@@ -1,5 +1,4 @@
 from django.db.models import Sum
-from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Location, Vehicle
@@ -50,7 +49,7 @@ class VehicleSerializer(serializers.ModelSerializer):
     current_plan = serializers.SerializerMethodField()
     next_location = serializers.SerializerMethodField()
     route_progress = serializers.SerializerMethodField()
-    mileage_today_km = serializers.SerializerMethodField()
+    route_mileage_km = serializers.SerializerMethodField()
     patrol_mileage_km = serializers.SerializerMethodField()
     total_emission_kg = serializers.SerializerMethodField()
 
@@ -74,7 +73,7 @@ class VehicleSerializer(serializers.ModelSerializer):
             "current_plan",
             "next_location",
             "route_progress",
-            "mileage_today_km",
+            "route_mileage_km",
             "patrol_mileage_km",
             "total_emission_kg",
         ]
@@ -118,11 +117,11 @@ class VehicleSerializer(serializers.ModelSerializer):
         _, stops = self._route(obj)
         return {"visited": sum(s.is_visited for s in stops), "total": len(stops)}
 
-    def get_mileage_today_km(self, obj) -> float:
-        total = obj.patrol_records.filter(
-            created_at__date=timezone.localdate()
-        ).aggregate(t=Sum("distance_km"))["t"]
-        return round(total or 0.0, 3)
+    def get_route_mileage_km(self, obj) -> float:
+        """Kilometres driven so far on the current patrol (night shifts cross
+        midnight, so this is per plan rather than per calendar day)."""
+        _, stops = self._route(obj)
+        return round(sum(s.leg_distance_km for s in stops if s.is_visited), 3)
 
     def get_patrol_mileage_km(self, obj) -> float:
         return round(obj.patrol_records.aggregate(t=Sum("distance_km"))["t"] or 0.0, 3)

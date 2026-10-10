@@ -1,107 +1,63 @@
-import { useEffect, useState } from "react";
-import { Box, Typography, Alert, Chip, useTheme } from "@mui/material";
-import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from "@react-google-maps/api";
+import { useEffect, useMemo, useState } from "react";
+import { Box, Chip, Typography } from "@mui/material";
 import Header from "../../components/Header";
-import { tokens } from "../../theme";
-import api from "../../api/client";
-
-const MAPS_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
-const containerStyle = { width: "100%", height: "72vh", borderRadius: "6px" };
-// Default view centred on Singapore (matches the seed data).
-const defaultCenter = { lat: 1.29, lng: 103.85 };
-
-const LiveMapInner = ({ vehicles }) => {
-  const [active, setActive] = useState(null);
-  const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: MAPS_KEY,
-  });
-
-  if (!isLoaded) return <Box p="20px">Loading map…</Box>;
-
-  return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={defaultCenter}
-      zoom={12}
-    >
-      {vehicles.map((v) => (
-        <MarkerF
-          key={v.id}
-          position={{ lat: v.current_latitude, lng: v.current_longitude }}
-          label={{ text: v.plate_number, fontSize: "11px" }}
-          onClick={() => setActive(v)}
-        />
-      ))}
-      {active && (
-        <InfoWindowF
-          position={{
-            lat: active.current_latitude,
-            lng: active.current_longitude,
-          }}
-          onCloseClick={() => setActive(null)}
-        >
-          <div style={{ color: "#111" }}>
-            <strong>{active.plate_number}</strong>
-            <br />
-            Engine: {active.engine_type}
-            <br />
-            Driver: {active.driver_name || "—"}
-            <br />
-            Status: {active.maintenance_status}
-          </div>
-        </InfoWindowF>
-      )}
-    </GoogleMap>
-  );
-};
+import Panel from "../../components/Panel";
+import RouteMap, { currentStops, routesFromStops } from "../../components/RouteMap";
+import { colorFor, fetchList } from "../../api/resources";
 
 const LiveMap = () => {
-  const theme = useTheme();
-  const colors = tokens(theme.palette.mode);
   const [vehicles, setVehicles] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [stops, setStops] = useState([]);
+  const [showRoutes, setShowRoutes] = useState(true);
 
   useEffect(() => {
-    const load = () =>
-      api.get("/pings/live/").then((r) => setVehicles(r.data));
+    const load = () => {
+      fetchList("/vehicles/").then(setVehicles);
+      fetchList("/locations/", { is_active: true }).then(setSites);
+      fetchList("/plans/", { status: "active" }).then((plans) => setStops(currentStops(plans)));
+    };
     load();
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, []);
 
+  const index = useMemo(() => Object.fromEntries(vehicles.map((v, i) => [v.id, i])), [vehicles]);
+  const vehicleColor = (id) => colorFor(index[id] ?? 0);
+  // Only the part of each route still to drive.
+  const remaining = stops.filter((s) => !s.is_visited);
+
   return (
     <Box m="20px">
-      <Header
-        title="LIVE MAP"
-        subtitle="Real-time vehicle positions (auto-refreshes every 5s)"
-      />
-      <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+      <Header title="LIVE MAP" subtitle="Real-time vehicle positions and remaining routes (refreshes every 5s)" />
+      <Box display="flex" gap={1} mb={2} flexWrap="wrap" alignItems="center">
         {vehicles.map((v) => (
-          <Chip key={v.id} label={`${v.plate_number} · ${v.driver_name || "—"}`} />
+          <Chip
+            key={v.id}
+            sx={{ borderColor: vehicleColor(v.id), borderWidth: 2 }}
+            variant="outlined"
+            label={`${v.plate_number} · ${v.driver_name || "—"} · next: ${v.next_location?.name || "—"}${
+              v.last_seen_at ? ` · ${new Date(v.last_seen_at).toLocaleTimeString()}` : ""
+            }`}
+          />
         ))}
+        <Chip
+          label={showRoutes ? "Hide routes" : "Show routes"}
+          onClick={() => setShowRoutes(!showRoutes)}
+          color="secondary"
+        />
       </Box>
-
-      {MAPS_KEY ? (
-        <LiveMapInner vehicles={vehicles} />
-      ) : (
-        <Box
-          backgroundColor={colors.primary[400]}
-          borderRadius="6px"
-          p="30px"
-          height="72vh"
-        >
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Set <code>REACT_APP_GOOGLE_MAPS_API_KEY</code> in{" "}
-            <code>frontend/.env</code> to enable the live Google Map. Showing a
-            coordinate list fallback below.
-          </Alert>
-          {vehicles.map((v) => (
-            <Typography key={v.id} variant="body1">
-              {v.plate_number}: ({v.current_latitude?.toFixed(4)},{" "}
-              {v.current_longitude?.toFixed(4)}) — {v.driver_name || "no driver"}
-            </Typography>
-          ))}
-        </Box>
-      )}
+      <Panel>
+        <RouteMap
+          height="70vh"
+          sites={sites}
+          vehicles={vehicles.map((v) => ({ ...v, color: vehicleColor(v.id) }))}
+          routes={showRoutes ? routesFromStops(remaining, vehicleColor) : []}
+        />
+        <Typography variant="caption" display="block" mt={1}>
+          Red sites have an active emergency alarm. Positions come from the duty phones' GPS pings.
+        </Typography>
+      </Panel>
     </Box>
   );
 };

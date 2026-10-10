@@ -52,6 +52,7 @@ class IncidentReportViewSet(viewsets.ModelViewSet):
     vehicle's reports; the command centre reviews all AI-triaged results.
     """
 
+    queryset = IncidentReport.objects.none()  # schema generation
     serializer_class = IncidentReportSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -104,6 +105,7 @@ class EmergencyAlertViewSet(
 ):
     """Emergency alert noticeboard: raise → dispatch (dynamic re-route) → resolve."""
 
+    queryset = EmergencyAlert.objects.none()  # schema generation
     serializer_class = EmergencyAlertSerializer
     permission_classes = [IsCommandCentre]
     filterset_fields = ["status", "location", "assigned_vehicle", "source"]

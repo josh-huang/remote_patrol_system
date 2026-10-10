@@ -27,9 +27,11 @@ import {
 
 const SUGGESTIONS = [
   "Give me a command overview",
+  "Handle the active emergency alerts",
+  "Plan tonight's patrol route",
   "Show critical incidents",
   "Where are the vehicles right now?",
-  "Plan a route and dispatch vehicles",
+  "How much carbon have we emitted?",
   "Generate today's report",
 ];
 

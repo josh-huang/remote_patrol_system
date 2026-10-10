@@ -28,6 +28,7 @@ class MessageViewSet(
     command centre. Command-centre users pick the vehicle to talk to.
     """
 
+    queryset = Message.objects.none()  # schema generation
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["vehicle", "from_command_centre"]

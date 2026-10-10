@@ -119,6 +119,7 @@ class PatrolPlanViewSet(viewsets.ModelViewSet):
 class PatrolStopViewSet(viewsets.ModelViewSet):
     """Plan stops. Guards only see (and check in at) their own vehicle's stops."""
 
+    queryset = PatrolStop.objects.none()  # schema generation
     serializer_class = PatrolStopSerializer
     permission_classes = [IsAdminRole]
     filterset_fields = ["plan", "vehicle", "is_visited"]
@@ -163,6 +164,7 @@ class PatrolStopViewSet(viewsets.ModelViewSet):
 class PatrolRecordViewSet(viewsets.ReadOnlyModelViewSet):
     """Past patrol records (immutable visit log, with site photos)."""
 
+    queryset = PatrolRecord.objects.none()  # schema generation
     serializer_class = PatrolRecordSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = {
@@ -188,6 +190,7 @@ class VehiclePingViewSet(
 ):
     """Real-time position reports. The duty phone POSTs here continuously."""
 
+    queryset = VehiclePing.objects.none()  # schema generation
     serializer_class = VehiclePingSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["vehicle"]

@@ -33,3 +33,7 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+.content {
+  overflow-y: auto;
+}

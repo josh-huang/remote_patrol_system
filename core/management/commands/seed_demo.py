@@ -82,8 +82,8 @@ INCIDENT_TEXTS = [
 
 
 def _at(day, minutes):
-    """Aware datetime on ``day`` starting 22:00 local, plus ``minutes``."""
-    naive = datetime.combine(day, time(22, 0)) + timedelta(minutes=minutes)
+    """Aware datetime on ``day`` starting 21:00 local, plus ``minutes``."""
+    naive = datetime.combine(day, time(21, 0)) + timedelta(minutes=minutes)
     return timezone.make_aware(naive)
 
 
@@ -211,7 +211,12 @@ class Command(BaseCommand):
         for back in range(days, 0, -1):
             day = today - timedelta(days=back)
             plan = services.create_daily_plan(user=admin, plan_date=day)
-            minutes = 0
+            clock = {}  # vehicles patrol in parallel: one clock per vehicle
+
+            def tick(vehicle_id):
+                clock[vehicle_id] = clock.get(vehicle_id, 0) + 15
+                return _at(day, clock[vehicle_id])
+
             stops = list(plan.stops.select_related("vehicle", "location").order_by("vehicle_id", "order"))
             first_vehicle = stops[0].vehicle
 
@@ -219,8 +224,7 @@ class Command(BaseCommand):
             if back % 3 == 0:
                 own = [s for s in stops if s.vehicle_id == first_vehicle.id]
                 for s in own[: len(own) // 2]:
-                    minutes += 12
-                    self._visit(s, _at(day, minutes))
+                    self._visit(s, tick(s.vehicle_id))
                 first_vehicle.refresh_from_db()
                 other = [s for s in stops if s.vehicle_id != first_vehicle.id]
                 target = random.choice(other).location
@@ -229,16 +233,16 @@ class Command(BaseCommand):
                 )
                 services.dispatch_alert(alert, first_vehicle, user=admin)
                 services.resolve_alert(alert, admin)
+                raised = clock[first_vehicle.id]
                 EmergencyAlert.objects.filter(pk=alert.pk).update(
-                    created_at=_at(day, minutes), dispatched_at=_at(day, minutes + 1), resolved_at=_at(day, minutes + 40)
+                    created_at=_at(day, raised), dispatched_at=_at(day, raised + 1), resolved_at=_at(day, raised + 40)
                 )
                 Message.objects.filter(vehicle=first_vehicle, created_at__date=today).update(
-                    created_at=_at(day, minutes + 1)
+                    created_at=_at(day, raised + 1)
                 )
 
             for s in plan.stops.select_related("vehicle", "location").filter(is_visited=False).order_by("vehicle_id", "order"):
-                minutes += 12
-                self._visit(s, _at(day, minutes))
+                self._visit(s, tick(s.vehicle_id))
             PatrolPlan.objects.filter(pk=plan.pk).update(
                 status=PatrolPlan.Status.COMPLETED, created_at=_at(day, -60)
             )

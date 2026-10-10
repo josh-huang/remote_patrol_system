@@ -50,6 +50,7 @@ class ChatView(APIView):
 
 
 class AgentConversationViewSet(viewsets.ModelViewSet):
+    queryset = AgentConversation.objects.none()  # schema generation
     serializer_class = AgentConversationSerializer
     permission_classes = [IsCommandCentre]
 

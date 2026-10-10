@@ -56,10 +56,10 @@ const Login = () => {
         <Box textAlign="center" mb={3}>
           <ShieldOutlinedIcon sx={{ fontSize: 48, color: colors.greenAccent[400] }} />
           <Typography variant="h3" fontWeight="bold">
-            Remote Patrol System
+            Dynamic Patrol Routing
           </Typography>
           <Typography variant="body2" color={colors.grey[300]}>
-            Command Center Sign In
+            Command Centre sign in
           </Typography>
         </Box>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

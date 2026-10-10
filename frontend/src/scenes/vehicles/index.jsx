@@ -1,158 +1,113 @@
 import { useEffect, useState } from "react";
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  MenuItem,
-  TextField,
-  useTheme,
-} from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import { DataGrid } from "@mui/x-data-grid";
 import Header from "../../components/Header";
-import { tokens } from "../../theme";
+import DataTable from "../../components/DataTable";
+import FormDialog from "../../components/FormDialog";
+import RowActions from "../../components/RowActions";
+import StatusChip from "../../components/StatusChip";
 import api from "../../api/client";
+import { ENGINE_TYPES, HEALTH_STATUSES, errorMessage, fetchList, fmt } from "../../api/resources";
 
-const ENGINE_TYPES = ["petrol", "diesel", "hybrid", "electric"];
-const STATUSES = ["healthy", "due", "in_service", "out_of_service"];
+const FIELDS = [
+  { name: "plate_number", label: "Car plate number", required: true },
+  { name: "model_name", label: "Model" },
+  { name: "contact_number", label: "Vehicle contact number" },
+  { name: "engine_type", label: "Engine type", type: "select", options: ENGINE_TYPES.map((t) => ({ value: t, label: t })) },
+  { name: "maintenance_status", label: "Health status", type: "select", options: HEALTH_STATUSES },
+  { name: "odometer_km", label: "Odometer (km)", type: "number" },
+  { name: "is_available", label: "Available for duty", type: "checkbox" },
+];
+
+const EMPTY = { engine_type: "petrol", maintenance_status: "healthy", odometer_km: 0, is_available: true };
 
 const Vehicles = () => {
-  const theme = useTheme();
-  const colors = tokens(theme.palette.mode);
   const [rows, setRows] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    plate_number: "",
-    contact_number: "",
-    engine_type: "petrol",
-    maintenance_status: "healthy",
-    odometer_km: 0,
-  });
+  const [editing, setEditing] = useState(null);
 
-  const load = () =>
-    api.get("/vehicles/").then((res) => setRows(res.data.results || res.data));
-
+  const load = () => fetchList("/vehicles/").then(setRows);
   useEffect(() => {
     load();
   }, []);
 
-  const handleCreate = async () => {
-    await api.post("/vehicles/", form);
-    setOpen(false);
-    setForm({
-      plate_number: "",
-      contact_number: "",
-      engine_type: "petrol",
-      maintenance_status: "healthy",
-      odometer_km: 0,
-    });
+  const save = async (form) => {
+    if (form.id) await api.patch(`/vehicles/${form.id}/`, form);
+    else await api.post("/vehicles/", form);
     load();
   };
 
+  const remove = async (row) => {
+    if (!window.confirm(`Remove vehicle ${row.plate_number}?`)) return;
+    try {
+      await api.delete(`/vehicles/${row.id}/`);
+      load();
+    } catch (e) {
+      window.alert(errorMessage(e));
+    }
+  };
+
   const columns = [
-    { field: "plate_number", headerName: "Plate", flex: 1 },
-    { field: "engine_type", headerName: "Engine", flex: 1 },
-    { field: "maintenance_status", headerName: "Status", flex: 1 },
-    { field: "driver_name", headerName: "Driver", flex: 1 },
-    { field: "contact_number", headerName: "Contact", flex: 1 },
     {
-      field: "odometer_km",
-      headerName: "Odometer (km)",
+      field: "plate_number",
+      headerName: "Car plate",
       flex: 1,
-      valueFormatter: (p) => Math.round(p.value),
+      renderCell: ({ row }) => (
+        <Box>
+          <Typography fontWeight={700}>{row.plate_number}</Typography>
+          <Typography variant="caption">{row.model_name}</Typography>
+        </Box>
+      ),
+    },
+    { field: "driver_name", headerName: "Driver in charge", flex: 1, valueGetter: ({ row }) => row.driver_name || "—" },
+    {
+      field: "contact",
+      headerName: "Contact number",
+      flex: 1,
+      valueGetter: ({ row }) => row.driver_phone || row.contact_number || "—",
+    },
+    { field: "engine_type", headerName: "Engine", flex: 0.7 },
+    {
+      field: "maintenance_status",
+      headerName: "Health status",
+      flex: 0.9,
+      renderCell: ({ value }) => <StatusChip value={value} />,
     },
     {
-      field: "is_available",
-      headerName: "Available",
+      field: "is_operational",
+      headerName: "On duty",
       flex: 0.6,
-      renderCell: (p) => (p.value ? "Yes" : "No"),
+      renderCell: ({ value }) => (value ? "Yes" : "No"),
+    },
+    { field: "next", headerName: "Next location", flex: 1.2, valueGetter: ({ row }) => row.next_location?.name || "—" },
+    { field: "route_mileage_km", headerName: "This patrol (km)", flex: 0.8, valueFormatter: ({ value }) => fmt(value) },
+    { field: "patrol_mileage_km", headerName: "Patrol km (total)", flex: 0.8, valueFormatter: ({ value }) => fmt(value, 0) },
+    { field: "odometer_km", headerName: "Odometer (km)", flex: 0.8, valueFormatter: ({ value }) => fmt(value, 0) },
+    {
+      field: "actions",
+      headerName: "",
+      sortable: false,
+      width: 100,
+      renderCell: ({ row }) => <RowActions onEdit={() => setEditing(row)} onDelete={() => remove(row)} />,
     },
   ];
 
   return (
     <Box m="20px">
       <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Header title="VEHICLES" subtitle="Manage the patrol fleet" />
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<AddIcon />}
-          onClick={() => setOpen(true)}
-        >
-          Add Vehicle
+        <Header title="VEHICLES" subtitle="Patrol fleet — vehicles in service/out of service are excluded from planning" />
+        <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setEditing(EMPTY)}>
+          Add vehicle
         </Button>
       </Box>
-      <Box
-        height="70vh"
-        sx={{
-          "& .MuiDataGrid-root": { border: "none" },
-          "& .MuiDataGrid-columnHeaders": {
-            backgroundColor: colors.blueAccent[700],
-          },
-          "& .MuiDataGrid-footerContainer": {
-            backgroundColor: colors.blueAccent[700],
-          },
-        }}
-      >
-        <DataGrid rows={rows} columns={columns} getRowId={(r) => r.id} />
-      </Box>
-
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add Vehicle</DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-          <TextField
-            label="Plate Number"
-            value={form.plate_number}
-            onChange={(e) => setForm({ ...form, plate_number: e.target.value })}
-          />
-          <TextField
-            label="Contact Number"
-            value={form.contact_number}
-            onChange={(e) => setForm({ ...form, contact_number: e.target.value })}
-          />
-          <TextField
-            select
-            label="Engine Type"
-            value={form.engine_type}
-            onChange={(e) => setForm({ ...form, engine_type: e.target.value })}
-          >
-            {ENGINE_TYPES.map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            label="Maintenance Status"
-            value={form.maintenance_status}
-            onChange={(e) =>
-              setForm({ ...form, maintenance_status: e.target.value })
-            }
-          >
-            {STATUSES.map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Odometer (km)"
-            type="number"
-            value={form.odometer_km}
-            onChange={(e) => setForm({ ...form, odometer_km: e.target.value })}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained" color="secondary">
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DataTable rows={rows} columns={columns} rowHeight={60} />
+      <FormDialog
+        open={Boolean(editing)}
+        title={editing?.id ? `Edit ${editing.plate_number}` : "Add vehicle"}
+        fields={FIELDS}
+        initial={editing}
+        onClose={() => setEditing(null)}
+        onSubmit={save}
+      />
     </Box>
   );
 };
