@@ -5,6 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.permissions import IsAdminRole
+
 from . import engine
 from .models import AgentAction, AgentConversation, AgentMessage
 from .serializers import (
@@ -74,7 +76,7 @@ class AgentActionViewSet(viewsets.ReadOnlyModelViewSet):
     """Inspect and resolve (confirm/reject) proposed agent actions."""
 
     serializer_class = AgentActionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminRole]
     queryset = AgentAction.objects.all()
     filterset_fields = ["status", "origin", "tool_name"]
 
