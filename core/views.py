@@ -1,6 +1,8 @@
 import csv
 from datetime import timedelta
 
+from django.conf import settings
+from django.db import DatabaseError, connection
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncDay
 from django.http import HttpResponse
@@ -21,11 +23,26 @@ from .serializers import EmissionCompareRequestSerializer, ShortestPathRequestSe
 from .services import emissions, llm, routing
 
 
-@extend_schema(responses={200: dict})
+@extend_schema(responses={200: dict, 503: dict})
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
-    return Response({"status": "ok", "llm_enabled": llm.is_enabled()})
+    """Liveness + readiness: the API is up and the database answers."""
+    try:
+        connection.ensure_connection()
+        database = "ok"
+    except DatabaseError:
+        database = "unavailable"
+    healthy = database == "ok"
+    return Response(
+        {
+            "status": "ok" if healthy else "degraded",
+            "database": database,
+            "routing_provider": settings.ROUTING_PROVIDER,
+            "llm_enabled": llm.is_enabled(),
+        },
+        status=status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
 
 
 def _carbon_saved(plans) -> dict:

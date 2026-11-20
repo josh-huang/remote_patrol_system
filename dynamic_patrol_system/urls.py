@@ -8,14 +8,23 @@ from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
 )
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
 
+
+class LoginView(TokenObtainPairView):
+    """JWT login, rate-limited per client to slow down password guessing."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+
 api_v1 = [
     # Authentication
-    path("auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("auth/token/", LoginView.as_view(), name="token_obtain_pair"),
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     # Domain apps
     path("", include("accounts.urls")),

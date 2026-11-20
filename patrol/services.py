@@ -7,18 +7,21 @@ these functions so the business rules live in exactly one place.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date as date_cls
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F, Max
 from django.utils import timezone
 
-from core.services import emissions, routing
+from core.services import distance, emissions, routing
 from fleet.models import Location, Vehicle
 
 from .models import PatrolPlan, PatrolRecord, PatrolRecordImage, PatrolStop
+from .signals import vehicle_dispatched
 
 VEHICLE_NODE = -1  # virtual graph node id for a vehicle's live position
 
@@ -36,11 +39,11 @@ def location_node(loc: Location) -> routing.Node:
 
 
 def build_graph(nodes: list[routing.Node]) -> routing.Graph:
-    """Road network over *every* active site plus ``nodes``.
+    """The approximate road network over every active site plus ``nodes``.
 
-    Using all sites as junctions keeps distances identical no matter which
-    subset of sites a plan or re-route involves. Nodes passed in (with their
-    emergency-boosted priority, or virtual vehicle positions) take precedence.
+    Used by the shortest-path tools, which demonstrate the three algorithms on
+    the model graph; planning itself reads the cached matrix from
+    ``site_matrix`` (whichever provider is configured).
     """
     by_id = {loc.id: location_node(loc) for loc in Location.objects.filter(is_active=True)}
     by_id.update({n.id: n for n in nodes})
@@ -48,6 +51,61 @@ def build_graph(nodes: list[routing.Node]) -> routing.Graph:
         list(by_id.values()),
         neighbours=settings.ROUTING_NEIGHBOURS,
         circuity=settings.ROUTING_CIRCUITY,
+    )
+
+
+def distance_provider() -> distance.DistanceProvider:
+    return distance.make_provider(
+        settings.ROUTING_PROVIDER,
+        neighbours=settings.ROUTING_NEIGHBOURS,
+        circuity=settings.ROUTING_CIRCUITY,
+        osrm_url=settings.OSRM_URL,
+    )
+
+
+# A fallback matrix (provider down) is cached briefly so the real one is
+# retried soon.
+FALLBACK_CACHE_SECONDS = 300
+
+
+def site_matrix(
+    locations=(), algorithm: str = "dijkstra"
+) -> tuple[routing.Matrix, list[routing.Node]]:
+    """Distances between every active site (plus any extra ``locations``).
+
+    Every active site is always included, so the distance from A to B is the
+    same in a daily plan, a manual plan and a re-route. The matrix depends only
+    on site coordinates, so it is cached under a fingerprint of them: moving,
+    adding or deactivating a site produces a new key, and nothing needs to be
+    invalidated by hand.
+    """
+    by_id = {loc.id: location_node(loc) for loc in Location.objects.filter(is_active=True)}
+    for loc in locations:
+        by_id.setdefault(loc.id, location_node(loc))
+    nodes = sorted(by_id.values(), key=lambda n: n.id)
+    provider = distance_provider()
+    fingerprint = hashlib.sha1(
+        ";".join(f"{n.id}:{n.lat:.6f}:{n.lng:.6f}" for n in nodes).encode()
+    ).hexdigest()
+    key = (
+        f"patrol:distances:{provider.name}:{algorithm}:"
+        f"{settings.ROUTING_NEIGHBOURS}:{settings.ROUTING_CIRCUITY}:{fingerprint}"
+    )
+    matrix = cache.get(key)
+    if matrix is None:
+        matrix, used = distance.matrix_with_fallback(provider, nodes, algorithm)
+        ttl = settings.DISTANCE_CACHE_SECONDS if used == provider.name else FALLBACK_CACHE_SECONDS
+        cache.set(key, matrix, ttl)
+    return matrix, nodes
+
+
+def matrix_with_points(
+    locations, points: list[routing.Node], algorithm: str = "dijkstra"
+) -> routing.Matrix:
+    """``site_matrix`` extended with off-network points such as live vehicles."""
+    matrix, nodes = site_matrix(locations, algorithm)
+    return routing.attach_points(
+        matrix, nodes, points, settings.ROUTING_NEIGHBOURS, settings.ROUTING_CIRCUITY
     )
 
 
@@ -108,28 +166,21 @@ def auto_plan(
         raise PlanningError(f"Unknown algorithm '{algorithm}'.")
 
     nodes = [location_node(loc) for loc in locations]
-    extra: list[routing.Node] = []
+    points: list[routing.Node] = []
     start_ids: list[int | None]
     if from_live_positions:
         start_ids = []
         for i, vehicle in enumerate(vehicles):
             node = vehicle_start_node(vehicle, VEHICLE_NODE - i)
             if node:
-                extra.append(node)
+                points.append(node)
             start_ids.append(node.id if node else None)
     else:
-        depot_id = depot.id if depot else None
-        if depot and depot.id not in {n.id for n in nodes}:
-            extra.append(location_node(depot))
-        start_ids = [depot_id] * len(vehicles)
+        start_ids = [depot.id if depot else None] * len(vehicles)
 
-    graph = build_graph(nodes + extra)
-    planned = routing.plan_patrol_routes(
-        nodes, len(vehicles), start_ids=start_ids, algorithm=algorithm, graph=graph
-    )
-    baseline = routing.baseline_routes(
-        nodes, len(vehicles), start_ids=start_ids, algorithm=algorithm, graph=graph
-    )
+    matrix = matrix_with_points(list(locations) + ([depot] if depot else []), points, algorithm)
+    planned = routing.plan_patrol_routes(nodes, len(vehicles), start_ids=start_ids, matrix=matrix)
+    baseline = routing.baseline_routes(nodes, len(vehicles), start_ids=start_ids, matrix=matrix)
     _persist_routes(plan, vehicles, planned, baseline)
 
     plan.algorithm = algorithm
@@ -143,9 +194,8 @@ def auto_plan(
 def manual_plan(plan: PatrolPlan, routes: list[dict], algorithm: str = "dijkstra") -> PatrolPlan:
     """Persist an admin-defined route: ``[{vehicle_id, location_ids: [...]}, ...]``.
 
-    Leg distances still come from the road network so manual and automatic
-    plans are directly comparable; the automatic plan for the same
-    vehicles/sites is stored as the plan's comparison figure.
+    Leg distances come from the same distance matrix as automatic plans, so
+    the two are directly comparable.
     """
     vehicle_ids = [r["vehicle_id"] for r in routes]
     vehicles = {v.id: v for v in Vehicle.objects.filter(id__in=vehicle_ids)}
@@ -156,8 +206,7 @@ def manual_plan(plan: PatrolPlan, routes: list[dict], algorithm: str = "dijkstra
     if missing := loc_ids - set(locations):
         raise PlanningError(f"Unknown location id(s): {sorted(missing)}")
 
-    nodes = [location_node(l) for l in locations.values()]
-    matrix = routing.distance_matrix(build_graph(nodes), algorithm)
+    matrix, _ = site_matrix(locations.values(), algorithm)
     plan.stops.all().delete()
     total_km = total_kg = 0.0
     for r in routes:
@@ -263,7 +312,16 @@ def next_stop(vehicle: Vehicle) -> PatrolStop | None:
 
 @transaction.atomic
 def check_in(stop: PatrolStop, *, guard=None, images=(), notes: str = "") -> PatrolRecord:
-    """Mark a stop visited and store the guard's site photos centrally."""
+    """Mark a stop visited and store the guard's site photos centrally.
+
+    The stop row is locked so a double-tapped check-in (or two phones) cannot
+    write two records for one visit.
+    """
+    stop = (
+        PatrolStop.objects.select_for_update()
+        .select_related("vehicle", "location", "plan")
+        .get(pk=stop.pk)
+    )
     if stop.is_visited:
         record = getattr(stop, "record", None)
         if record is None:
@@ -298,10 +356,15 @@ def check_in(stop: PatrolStop, *, guard=None, images=(), notes: str = "") -> Pat
 # ---------------------------------------------------------------------------
 # Emergencies: raise → dispatch (dynamic re-route) → resolve
 # ---------------------------------------------------------------------------
+@transaction.atomic
 def raise_alert(location: Location, *, description: str = "", source=None, user=None, incident=None):
-    """Raise (or return the existing) active alert at ``location``."""
+    """Raise (or return the existing) active alert at ``location``.
+
+    The site row is locked so two simultaneous alarms create one alert.
+    """
     from incidents.models import EmergencyAlert
 
+    location = Location.objects.select_for_update().get(pk=location.pk)
     existing = location.alerts.exclude(status=EmergencyAlert.Status.RESOLVED).first()
     if existing:
         return existing, False
@@ -347,11 +410,13 @@ def dispatch_alert(alert, vehicle: Vehicle | None = None, algorithm: str = "dijk
     to the last site of the original route — is recorded on the alert and
     the plan.
     """
-    from comms.models import Message
     from incidents.models import EmergencyAlert
 
-    if alert.status == EmergencyAlert.Status.RESOLVED:
-        raise PlanningError("Alert is already resolved.")
+    # Lock the alert so two operators (or an operator and the agent) cannot
+    # divert two vehicles to the same emergency.
+    alert = EmergencyAlert.objects.select_for_update().select_related("location").get(pk=alert.pk)
+    if alert.status != EmergencyAlert.Status.ACTIVE:
+        raise PlanningError(f"Alert is already {alert.get_status_display().lower()}.")
     site = alert.location
     if vehicle is None:
         vehicle, _ = nearest_vehicle(site.latitude, site.longitude)
@@ -360,8 +425,11 @@ def dispatch_alert(alert, vehicle: Vehicle | None = None, algorithm: str = "dijk
     if not vehicle.is_operational:
         raise PlanningError(f"{vehicle.plate_number} is not operational.")
 
-    plan, stops = vehicle_route(vehicle)
-    if plan is None:
+    plan = active_plan_for(vehicle)
+    if plan is not None:
+        plan = PatrolPlan.objects.select_for_update().get(pk=plan.pk)
+        stops = list(plan.stops.filter(vehicle=vehicle).select_related("location").order_by("order"))
+    else:
         plan = PatrolPlan.objects.create(
             name=f"Emergency response — {site.name}",
             date=timezone.localdate(),
@@ -385,22 +453,21 @@ def dispatch_alert(alert, vehicle: Vehicle | None = None, algorithm: str = "dijk
     if current is None:
         anchor = resume or site
         current = routing.Node(VEHICLE_NODE, vehicle.plate_number, anchor.latitude, anchor.longitude)
-    graph = build_graph(nodes + [current])
+    matrix = matrix_with_points(list(locs.values()), [current], algorithm)
 
     result = routing.reroute_after_emergency(
-        graph,
+        None,
         current_id=current.id,
         emergency_id=site.id,
         remaining_ids=[s.location_id for s in remaining],
         resume_id=resume.id if resume else None,
-        algorithm=algorithm,
         priority={n.id: n.priority for n in nodes},
+        matrix=matrix,
     )
 
     # Replace the vehicle's unvisited stops with the re-planned sequence.
     PatrolStop.objects.filter(id__in=[s.id for s in remaining]).delete()
     # The diverted vehicle now covers the site, so drop it from other routes.
-    matrix = routing.distance_matrix(graph, algorithm)
     for other in plan.stops.filter(location=site, is_visited=False).exclude(vehicle=vehicle):
         other_vehicle = other.vehicle
         other.delete()
@@ -445,15 +512,10 @@ def dispatch_alert(alert, vehicle: Vehicle | None = None, algorithm: str = "dijk
     }
     alert.save()
 
-    # Push the instruction to the duty phone's message channel.
-    Message.objects.create(
-        vehicle=vehicle,
-        sender=user,
-        from_command_centre=True,
-        body=(
-            f"EMERGENCY at {site.name}. Proceed there now. Your remaining route has "
-            f"been re-planned from that site ({len(result.new_order) - 1} stop(s) after it)."
-        ),
+    # Subscribers (e.g. messaging) react in the same transaction, so the
+    # dispatch and the duty-phone instruction commit or roll back together.
+    vehicle_dispatched.send(
+        sender=EmergencyAlert, alert=alert, vehicle=vehicle, plan=plan, reroute=result, user=user
     )
     return DispatchOutcome(alert=alert, vehicle=vehicle, plan=plan, reroute=result)
 
@@ -475,6 +537,7 @@ def _relink_legs(plan: PatrolPlan, vehicle: Vehicle, matrix) -> None:
 def resolve_alert(alert, user=None):
     from incidents.models import EmergencyAlert
 
+    alert = EmergencyAlert.objects.select_for_update().select_related("location").get(pk=alert.pk)
     alert.status = EmergencyAlert.Status.RESOLVED
     alert.resolved_at = timezone.now()
     alert.save(update_fields=["status", "resolved_at", "updated_at"])
@@ -495,6 +558,7 @@ def rebalance_plan(plan: PatrolPlan, algorithm: str | None = None) -> dict:
     insertion) into the remaining routes of operational vehicles in the plan.
     """
     algorithm = algorithm or plan.algorithm
+    plan = PatrolPlan.objects.select_for_update().get(pk=plan.pk)
     stops = list(plan.stops.select_related("vehicle", "location").order_by("vehicle_id", "order"))
     by_vehicle: dict[int, list[PatrolStop]] = {}
     for s in stops:
@@ -509,15 +573,14 @@ def rebalance_plan(plan: PatrolPlan, algorithm: str | None = None) -> dict:
         raise PlanningError("No operational vehicle left in this plan.")
 
     locs = {s.location_id: s.location for s in stops}
-    nodes = [location_node(l) for l in locs.values()]
     starts = {}
-    extra = []
+    points = []
     for i, vid in enumerate(healthy):
         node = vehicle_start_node(vehicles[vid], VEHICLE_NODE - i)
         if node:
-            extra.append(node)
+            points.append(node)
             starts[vid] = node.id
-    matrix = routing.distance_matrix(build_graph(nodes + extra), algorithm)
+    matrix = matrix_with_points(list(locs.values()), points, algorithm)
 
     pending = {vid: [s.location_id for s in by_vehicle[vid] if not s.is_visited] for vid in healthy}
     for vid in healthy:

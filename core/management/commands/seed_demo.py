@@ -23,7 +23,7 @@ from accounts.models import SecurityGuard
 from comms.models import Message
 from fleet.models import Location, Vehicle
 from incidents.models import EmergencyAlert, IncidentReport
-from incidents.views import analyze_incident
+from incidents.services import analyze_incident
 from patrol import services
 from patrol.models import PatrolPlan, PatrolRecord, VehiclePing
 

@@ -43,7 +43,7 @@ class LocationViewSet(viewsets.ModelViewSet):
         )
         if req.validated_data["auto_dispatch"] and alert.status == EmergencyAlert.Status.ACTIVE:
             try:
-                services.dispatch_alert(alert, user=request.user)
+                alert = services.dispatch_alert(alert, user=request.user).alert
             except services.PlanningError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(

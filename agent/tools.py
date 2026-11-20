@@ -489,6 +489,7 @@ def dispatch_emergency(alert_id: int, vehicle_id: int = None) -> dict:
         outcome = services.dispatch_alert(alert, vehicle)
     except services.PlanningError as exc:
         return {"error": str(exc)}
+    alert = outcome.alert
     return {
         "alert_id": alert.id,
         "vehicle": outcome.vehicle.plate_number,

@@ -10,6 +10,12 @@ if [ "$USE_SQLITE" != "True" ]; then
   echo "MySQL is up."
 fi
 
+# In production (DEBUG off) refuse to start with an unsafe configuration,
+# e.g. the development SECRET_KEY. Warnings are printed but do not block.
+if [ "$DJANGO_DEBUG" != "True" ]; then
+  python manage.py check --deploy --fail-level ERROR
+fi
+
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput || true
 

@@ -311,6 +311,8 @@ def compare_algorithms(graph: Graph, source: int, target: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Route cost helpers
 # ---------------------------------------------------------------------------
+# Matrices are symmetric (the road network is undirected; OSRM distances are
+# averaged over both directions), which the O(1) move evaluations rely on.
 Matrix = dict[int, dict[int, float]]
 
 
@@ -330,6 +332,38 @@ def leg_distances(order: list[int], matrix: Matrix, start: int | None = None) ->
     return legs
 
 
+def _link(matrix: Matrix, a: int | None, b: int | None) -> float:
+    """Edge cost where a missing end (no start, or past the end) costs 0."""
+    return 0.0 if a is None or b is None else matrix[a][b]
+
+
+def insertion_cost(order: list[int], pos: int, site: int, matrix: Matrix, start: int | None) -> float:
+    """Extra km of inserting ``site`` before ``order[pos]`` — O(1)."""
+    prev = order[pos - 1] if pos > 0 else start
+    nxt = order[pos] if pos < len(order) else None
+    return _link(matrix, prev, site) + _link(matrix, site, nxt) - _link(matrix, prev, nxt)
+
+
+def removal_gain(order: list[int], idx: int, matrix: Matrix, start: int | None) -> float:
+    """Km saved by removing ``order[idx]`` — O(1)."""
+    prev = order[idx - 1] if idx > 0 else start
+    nxt = order[idx + 1] if idx + 1 < len(order) else None
+    site = order[idx]
+    return _link(matrix, prev, site) + _link(matrix, site, nxt) - _link(matrix, prev, nxt)
+
+
+def cheapest_insertion(
+    order: list[int], site: int, matrix: Matrix, start: int | None
+) -> tuple[int, float]:
+    """Best position (and added km) to insert ``site`` into an open path — O(len)."""
+    best_pos, best_delta = len(order), INF
+    for pos in range(len(order) + 1):
+        delta = insertion_cost(order, pos, site, matrix, start)
+        if delta < best_delta:
+            best_pos, best_delta = pos, delta
+    return best_pos, best_delta
+
+
 def nearest_neighbour(nodes: list[int], matrix: Matrix, start: int | None) -> list[int]:
     """Greedy open-path construction from ``start``."""
     remaining = list(nodes)
@@ -341,7 +375,8 @@ def nearest_neighbour(nodes: list[int], matrix: Matrix, start: int | None) -> li
     else:
         current, order = start, []
     while remaining:
-        nxt = min(remaining, key=lambda n: matrix[current][n])
+        row = matrix[current]
+        nxt = min(remaining, key=row.__getitem__)
         remaining.remove(nxt)
         order.append(nxt)
         current = nxt
@@ -349,21 +384,30 @@ def nearest_neighbour(nodes: list[int], matrix: Matrix, start: int | None) -> li
 
 
 def two_opt(order: list[int], matrix: Matrix, start: int | None = None) -> list[int]:
-    """2-opt local search for an open path (start fixed, end free)."""
-    best = list(order)
-    if len(best) < 3:
-        return best
+    """2-opt local search for an open path (start fixed, end free).
+
+    Reversing ``seq[i..j]`` only changes the two edges at its ends, so each
+    candidate move is costed in O(1) instead of re-summing the whole path.
+    """
+    seq = list(order)
+    n = len(seq)
+    if n < 2:
+        return seq
     improved = True
     while improved:
         improved = False
-        base = path_length(best, matrix, start)
-        for i in range(len(best) - 1):
-            for j in range(i + 1, len(best)):
-                candidate = best[:i] + best[i : j + 1][::-1] + best[j + 1 :]
-                length = path_length(candidate, matrix, start)
-                if length < base - 1e-9:
-                    best, base, improved = candidate, length, True
-    return best
+        for i in range(n - 1):
+            before = seq[i - 1] if i > 0 else start
+            for j in range(i + 1, n):
+                after = seq[j + 1] if j + 1 < n else None
+                delta = (
+                    _link(matrix, before, seq[j]) + _link(matrix, seq[i], after)
+                    - _link(matrix, before, seq[i]) - _link(matrix, seq[j], after)
+                )
+                if delta < -1e-9:
+                    seq[i : j + 1] = seq[i : j + 1][::-1]
+                    improved = True
+    return seq
 
 
 def optimise_path(
@@ -390,6 +434,52 @@ def optimise_path(
     return order
 
 
+def attach_points(
+    matrix: Matrix,
+    sites: list[Node],
+    points: list[Node],
+    neighbours: int = DEFAULT_NEIGHBOURS,
+    circuity: float = DEFAULT_CIRCUITY,
+) -> Matrix:
+    """Extend a site matrix with off-network points (e.g. live vehicle GPS).
+
+    Each point joins the network through its ``neighbours`` nearest sites as a
+    *leaf*: a route may start or end there, but never passes through it. The
+    site-to-site distances are therefore never changed by where vehicles happen
+    to be, which is what lets the site matrix be computed once and cached.
+    The input matrix is not modified.
+    """
+    if not points:
+        return matrix
+    site_ids = [s.id for s in sites if s.id in matrix]
+    by_id = {s.id: s for s in sites}
+    out: Matrix = {k: dict(v) for k, v in matrix.items()}
+    links: dict[int, list[tuple[int, float]]] = {}
+    for p in points:
+        nearest = sorted(
+            site_ids, key=lambda sid: haversine_km(p.lat, p.lng, by_id[sid].lat, by_id[sid].lng)
+        )[: max(1, neighbours)]
+        links[p.id] = [(sid, _edge_km(p, by_id[sid], circuity)) for sid in nearest]
+        row = {sid: min(w + matrix[j][sid] for j, w in links[p.id]) for sid in site_ids}
+        out[p.id] = row
+        for sid, dist in row.items():
+            out[sid][p.id] = dist
+    for p in points:
+        out[p.id][p.id] = 0.0
+        for q in points:
+            if q.id != p.id:
+                out[p.id][q.id] = min(w + out[j][q.id] for j, w in links[p.id])
+    return out
+
+
+def _resolve_matrix(
+    nodes: list[Node], matrix: Matrix | None, graph: Graph | None, algorithm: str
+) -> Matrix:
+    if matrix is not None:
+        return matrix
+    return distance_matrix(graph or Graph.road_network(nodes), algorithm)
+
+
 # ---------------------------------------------------------------------------
 # Daily multi-vehicle planner
 # ---------------------------------------------------------------------------
@@ -402,6 +492,16 @@ class PlannedRoute:
     legs_km: list[float] = field(default_factory=list)
 
 
+def _planned(i: int, start: int | None, order: list[int], matrix: Matrix) -> PlannedRoute:
+    return PlannedRoute(
+        vehicle_index=i,
+        start_id=start,
+        stop_order=order,
+        total_distance_km=round(path_length(order, matrix, start), 3),
+        legs_km=[round(x, 3) for x in leg_distances(order, matrix, start)],
+    )
+
+
 def plan_patrol_routes(
     nodes: list[Node],
     num_vehicles: int,
@@ -410,6 +510,7 @@ def plan_patrol_routes(
     algorithm: str = "dijkstra",
     graph: Graph | None = None,
     priority_tiers: bool = True,
+    matrix: Matrix | None = None,
 ) -> list[PlannedRoute]:
     """Assign every site to a vehicle and order each vehicle's stops.
 
@@ -420,25 +521,26 @@ def plan_patrol_routes(
     * ``depot_id``   – optional shared start site (e.g. the command centre).
     * ``start_ids``  – optional per-vehicle start node ids (e.g. a virtual node
       at each vehicle's live position); overrides ``depot_id``.
-    * ``algorithm``  – which shortest-path algorithm builds the road distances.
+    * ``matrix``     – precomputed distances (any provider); otherwise built
+      from ``graph`` (default: the road network) with ``algorithm``.
 
     Strategy:
-      1. Build the road network and all-pairs distance matrix.
-      2. Seed each vehicle with the highest-priority unassigned site.
-      3. Cheapest-insertion of the remaining sites with a balance cap
+      1. Seed each vehicle with the highest-priority unassigned site.
+      2. Cheapest-insertion of the remaining sites with a balance cap
          (ceil(n / vehicles) + 1 stops) so work is shared fairly.
-      4. Re-order each route tier-by-tier (NN + 2-opt).
-      5. Inter-route *relocate* moves while they reduce total distance.
+      3. Re-order each route tier-by-tier (NN + 2-opt).
+      4. Inter-route *relocate* moves while they reduce total distance.
+    Every move is costed in O(1) from the matrix, so the planner stays fast for
+    hundreds of sites.
     """
     if num_vehicles < 1:
         raise ValueError("num_vehicles must be >= 1")
 
-    graph = graph or Graph.road_network(nodes)
-    matrix = distance_matrix(graph, algorithm)
-    node_by_id = {n.id: n for n in graph.nodes.values()}
+    matrix = _resolve_matrix(nodes, matrix, graph, algorithm)
+    node_by_id = {n.id: n for n in nodes}
 
     if start_ids is None:
-        start_ids = [depot_id if depot_id in node_by_id else None] * num_vehicles
+        start_ids = [depot_id if depot_id in matrix else None] * num_vehicles
     start_set = {s for s in start_ids if s is not None}
     priority = {n.id: n.priority for n in nodes} if priority_tiers else {}
 
@@ -447,76 +549,60 @@ def plan_patrol_routes(
         key=lambda nid: (-node_by_id[nid].priority, node_by_id[nid].name, nid),
     )
     if not candidates:
-        return [
-            PlannedRoute(i, start_ids[i], [], 0.0, []) for i in range(num_vehicles)
-        ]
+        return [PlannedRoute(i, start_ids[i], [], 0.0, []) for i in range(num_vehicles)]
 
     cap = math.ceil(len(candidates) / num_vehicles) + 1
     routes: list[list[int]] = [[] for _ in range(num_vehicles)]
 
-    def route_cost(i: int, order: list[int]) -> float:
-        return path_length(order, matrix, start_ids[i])
-
-    # 2. Seed: spread the top-priority sites, nearest start first.
-    seeds = candidates[:num_vehicles]
+    # 1. Seed: spread the top-priority sites, nearest start first.
     free = set(range(num_vehicles))
-    for site in seeds:
-        best = min(
-            free,
-            key=lambda i: matrix[start_ids[i]][site] if start_ids[i] is not None else 0.0,
-        )
+    for site in candidates[:num_vehicles]:
+        best = min(free, key=lambda i: _link(matrix, start_ids[i], site))
         routes[best].append(site)
         free.discard(best)
 
-    # 3. Cheapest insertion with balance cap.
+    # 2. Cheapest insertion with balance cap.
     for site in candidates[num_vehicles:]:
-        best_i, best_pos, best_delta = None, None, INF
+        best_i, best_pos, best_delta = 0, 0, INF
         for i, order in enumerate(routes):
             if len(order) >= cap:
                 continue
-            base = route_cost(i, order)
-            for pos in range(len(order) + 1):
-                delta = route_cost(i, order[:pos] + [site] + order[pos:]) - base
-                if delta < best_delta:
-                    best_i, best_pos, best_delta = i, pos, delta
+            pos, delta = cheapest_insertion(order, site, matrix, start_ids[i])
+            if delta < best_delta:
+                best_i, best_pos, best_delta = i, pos, delta
         routes[best_i].insert(best_pos, site)
 
-    # 4. Intra-route optimisation respecting priority tiers.
+    # 3. Intra-route optimisation respecting priority tiers.
     routes = [optimise_path(r, matrix, start_ids[i], priority) for i, r in enumerate(routes)]
 
-    # 5. Inter-route relocate: move a site to another vehicle when the km
+    # 4. Inter-route relocate: move a site to another vehicle when the km
     # saved by removing it exceeds the km added by its cheapest insertion.
     for _ in range(100):
         moved = False
         for a in range(num_vehicles):
-            for site in list(routes[a]):
-                if len(routes[a]) <= 1:
-                    break
-                without = [s for s in routes[a] if s != site]
-                gain = route_cost(a, routes[a]) - route_cost(a, without)
+            idx = 0
+            while idx < len(routes[a]) and len(routes[a]) > 1:
+                gain = removal_gain(routes[a], idx, matrix, start_ids[a])
+                site = routes[a][idx]
+                target = None
                 for b in range(num_vehicles):
                     if b == a or len(routes[b]) >= cap:
                         continue
                     pos, added = cheapest_insertion(routes[b], site, matrix, start_ids[b])
                     if added < gain - 1e-6:
-                        routes[a] = without
-                        routes[b].insert(pos, site)
-                        moved = True
+                        target = (b, pos)
                         break
+                if target:
+                    del routes[a][idx]
+                    routes[target[0]].insert(target[1], site)
+                    moved = True
+                else:
+                    idx += 1
         if not moved:
             break
     routes = [optimise_path(r, matrix, start_ids[i], priority) for i, r in enumerate(routes)]
 
-    return [
-        PlannedRoute(
-            vehicle_index=i,
-            start_id=start_ids[i],
-            stop_order=order,
-            total_distance_km=round(route_cost(i, order), 3),
-            legs_km=[round(x, 3) for x in leg_distances(order, matrix, start_ids[i])],
-        )
-        for i, order in enumerate(routes)
-    ]
+    return [_planned(i, start_ids[i], order, matrix) for i, order in enumerate(routes)]
 
 
 def baseline_routes(
@@ -525,6 +611,7 @@ def baseline_routes(
     start_ids: list[int | None] | None = None,
     algorithm: str = "dijkstra",
     graph: Graph | None = None,
+    matrix: Matrix | None = None,
 ) -> list[PlannedRoute]:
     """The *manual* baseline the command centre uses today.
 
@@ -533,8 +620,7 @@ def baseline_routes(
     between this and ``plan_patrol_routes`` is the mileage — and so the CO2e —
     that automated planning saves.
     """
-    graph = graph or Graph.road_network(nodes)
-    matrix = distance_matrix(graph, algorithm)
+    matrix = _resolve_matrix(nodes, matrix, graph, algorithm)
     start_ids = start_ids or [None] * num_vehicles
     start_set = {s for s in start_ids if s is not None}
     ordered = sorted(
@@ -543,16 +629,7 @@ def baseline_routes(
     routes: list[list[int]] = [[] for _ in range(num_vehicles)]
     for idx, node in enumerate(ordered):
         routes[idx % num_vehicles].append(node.id)
-    return [
-        PlannedRoute(
-            vehicle_index=i,
-            start_id=start_ids[i],
-            stop_order=order,
-            total_distance_km=round(path_length(order, matrix, start_ids[i]), 3),
-            legs_km=[round(x, 3) for x in leg_distances(order, matrix, start_ids[i])],
-        )
-        for i, order in enumerate(routes)
-    ]
+    return [_planned(i, start_ids[i], order, matrix) for i, order in enumerate(routes)]
 
 
 # ---------------------------------------------------------------------------
@@ -582,13 +659,14 @@ class RerouteResult:
 
 
 def reroute_after_emergency(
-    graph: Graph,
+    graph: Graph | None,
     current_id: int,
     emergency_id: int,
     remaining_ids: list[int],
     resume_id: int | None = None,
     algorithm: str = "dijkstra",
     priority: dict[int, int] | None = None,
+    matrix: Matrix | None = None,
 ) -> RerouteResult:
     """Re-plan a vehicle's route after it is diverted to an emergency.
 
@@ -602,7 +680,8 @@ def reroute_after_emergency(
     The dynamic plan instead continues from the emergency site and re-optimises
     the remaining stops (priority tiers + 2-opt), never driving back.
     """
-    matrix = distance_matrix(graph, algorithm)
+    if matrix is None:
+        matrix = distance_matrix(graph, algorithm)
     remaining = [s for s in remaining_ids if s not in (emergency_id, current_id)]
 
     # Baseline: current -> emergency -> back to resume point -> original order.
@@ -624,16 +703,3 @@ def reroute_after_emergency(
         baseline_order=baseline_order,
         baseline_km=round(baseline_km, 3),
     )
-
-
-def cheapest_insertion(
-    order: list[int], site: int, matrix: Matrix, start: int | None
-) -> tuple[int, float]:
-    """Best position (and added km) to insert ``site`` into an open path."""
-    base = path_length(order, matrix, start)
-    best_pos, best_delta = len(order), INF
-    for pos in range(len(order) + 1):
-        delta = path_length(order[:pos] + [site] + order[pos:], matrix, start) - base
-        if delta < best_delta:
-            best_pos, best_delta = pos, delta
-    return best_pos, best_delta

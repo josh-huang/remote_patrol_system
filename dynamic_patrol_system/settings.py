@@ -28,10 +28,8 @@ env = environ.Env(
 # Load a local .env file when present (ignored in production containers).
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env(
-    "DJANGO_SECRET_KEY",
-    default="django-insecure-dev-only-change-me-in-production",
-)
+DEV_SECRET_KEY = "django-insecure-dev-only-change-me-in-production"
+SECRET_KEY = env("DJANGO_SECRET_KEY", default=DEV_SECRET_KEY)
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
 
@@ -173,6 +171,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardPagination",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Brute-force protection on the login endpoint (see LoginView).
+    "DEFAULT_THROTTLE_RATES": {"login": env("LOGIN_THROTTLE_RATE", default="20/min")},
 }
 
 SIMPLE_JWT = {
@@ -199,6 +199,20 @@ SPECTACULAR_SETTINGS = {
 
 
 # ---------------------------------------------------------------------------
+# HTTPS hardening — enable when served behind TLS (`manage.py check --deploy`
+# reports what is still missing; the Docker entrypoint runs it when DEBUG is off).
+# ---------------------------------------------------------------------------
+if env.bool("DJANGO_HTTPS", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = env.int("DJANGO_HSTS_SECONDS", default=3600)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+
+# ---------------------------------------------------------------------------
 # CORS (React dashboard on :3000, Flutter app, etc.)
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
@@ -218,9 +232,17 @@ LLM_VISION_MODEL = env("LLM_VISION_MODEL", default="gpt-4o-mini")
 # Command-centre hotline shown to guards in the mobile app ("call command").
 COMMAND_CENTRE_PHONE = env("COMMAND_CENTRE_PHONE", default="+65 6000 0000")
 
-# Road-network model used by the route planner (see core/services/routing.py).
+# Where the route planner's distances come from (core/services/distance.py):
+#   road_network — offline approximate road network (default, deterministic)
+#   osrm         — real driving distances from an OSRM server, falling back to
+#                  the road-network model if it cannot be reached
+ROUTING_PROVIDER = env("ROUTING_PROVIDER", default="road_network")
+OSRM_URL = env("OSRM_URL", default="https://router.project-osrm.org")
 ROUTING_CIRCUITY = env.float("ROUTING_CIRCUITY", default=1.3)
 ROUTING_NEIGHBOURS = env.int("ROUTING_NEIGHBOURS", default=5)
+# Site distance matrices are cached; a change to any active site's
+# coordinates (or the set of active sites) produces a new cache key.
+DISTANCE_CACHE_SECONDS = env.int("DISTANCE_CACHE_SECONDS", default=24 * 3600)
 
 # Google Maps key is consumed by the frontend; kept here for reference/docs.
 GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")

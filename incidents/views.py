@@ -1,4 +1,3 @@
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -7,7 +6,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.permissions import IsCommandCentre, guard_vehicle_id, is_command_centre
-from core.services import llm
 from fleet.models import Vehicle
 from patrol import services
 
@@ -17,32 +15,7 @@ from .serializers import (
     EmergencyAlertSerializer,
     IncidentReportSerializer,
 )
-
-
-def analyze_incident(incident: IncidentReport) -> IncidentReport:
-    """Run AI triage on an incident and trigger the agent's autonomy hook."""
-    image_paths = [img.image.path for img in incident.images.all()]
-    result = llm.analyze_incident(incident.description, image_paths=image_paths)
-    incident.ai_category = result["category"]
-    incident.ai_severity = result["severity"]
-    incident.ai_summary = result["summary"]
-    incident.ai_recommended_action = result["recommended_action"]
-    incident.ai_anomaly_detected = result["anomaly_detected"]
-    incident.ai_tags = result["tags"]
-    incident.ai_source = result["source"]
-    incident.ai_analyzed_at = timezone.now()
-    incident.save()
-    # Event-driven autonomy: serious incidents raise an emergency alert and the
-    # agent proposes a dispatch (queued for operator confirmation).
-    try:
-        from agent.autonomy import evaluate_incident
-
-        evaluate_incident(incident)
-    except Exception:  # noqa: BLE001 - autonomy must never break intake
-        import logging
-
-        logging.getLogger(__name__).exception("Autonomy hook failed")
-    return incident
+from .services import analyze_incident
 
 
 class IncidentReportViewSet(viewsets.ModelViewSet):
