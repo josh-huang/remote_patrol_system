@@ -19,6 +19,8 @@ jobs:
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test
       - run: python manage.py spectacular --file /tmp/schema.yml --fail-on-warn
+      - name: Evaluation runner smoke test (no OR-Tools, no plots, no network)
+        run: python -m evaluation.run --quick --skip-ortools --no-plots --out /tmp/evaluation
 
   dashboard:
     runs-on: ubuntu-latest

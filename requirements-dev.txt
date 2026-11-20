@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Evaluation only (python -m evaluation.run): OR-Tools reference solver and charts
+ortools>=9.10,<10
+matplotlib>=3.8,<4
