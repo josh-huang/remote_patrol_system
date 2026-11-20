@@ -16,6 +16,32 @@ It has three parts:
 
 📄 Full write-up: [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) — problem
 statement, solution, algorithms, technology stack and evaluation.
+📊 Evaluation results: [`docs/evaluation/`](docs/evaluation/README.md).
+
+## Background: original capstone and this rebuild
+
+This project began as my undergraduate capstone, **"Dynamic Patrol Routing
+System"** (CSC3001 Capstone Project, Singapore Institute of Technology –
+University of Glasgow Joint Degree in Computing Science, August 2022 – April
+2023), an industry project with a Singapore security services company. The
+problem definition and design draft from that project are kept in this
+repository (`Capstone_Proposal_Huang_Jiashu_2001792.pdf`,
+`Capstone Draft.docx`).
+
+The original source code was lost. **This repository is a 2026 rebuild,
+written with AI assistance (Claude Code)** from those two documents: every
+requirement in them is implemented and traced in the table below. Commits made
+with that assistance carry a `Co-Authored-By: Claude` trailer.
+
+The rebuild deliberately goes beyond the original scope in a few places, so
+they are not mistaken for 2023 work:
+
+- the AI agent ("Sentinel") and LLM incident triage;
+- real driving distances through OSRM, and the evaluation framework that
+  compares the planner with OR-Tools and simpler heuristics
+  ([`evaluation/`](evaluation/run.py));
+- the architecture hardening described under
+  [Architecture decisions](#architecture-decisions) and the CI pipeline.
 
 An optional AI agent ("Sentinel") lets operators drive the system in natural
 language and reacts to serious incidents; every state-changing action it
@@ -31,7 +57,7 @@ From the capstone problem definition and design draft.
 
 | Requirement | How it is met |
 |---|---|
-| Plan each vehicle's route every day from the sites and **available** vehicles; cover every site; shortest overall distance | `core/services/routing.py → plan_patrol_routes`: capacitated, priority-aware multi-vehicle planner (balanced cheapest insertion, priority tiers, 2-opt, inter-route relocate). Only *operational* vehicles (available and not `in_service`/`out_of_service`) are planned. Every site is covered exactly once (tested). |
+| Plan each vehicle's route every day from the sites and **available** vehicles; cover every site; shortest overall distance | `core/services/routing.py → plan_patrol_routes`: capacitated, priority-aware multi-vehicle planner (multi-start local search: cheapest insertion and sweep starts, then 2-opt, relocate, swap and 2-opt* moves; priority tiers). Within 1–7% of OR-Tools on 20–100 sites ([evaluation](docs/evaluation/README.md)). Only *operational* vehicles (available and not `in_service`/`out_of_service`) are planned. Every site is covered exactly once (tested). |
 | No admin planning every night | `python manage.py plan_daily` (schedule with cron) or the one-click **Automatic plan** on the dashboard (`POST /plans/auto_daily/`). |
 | Re-plan the route of a vehicle involved in an emergency, without driving back | `reroute_after_emergency` + `patrol.services.dispatch_alert`: the vehicle goes to the emergency site and the rest of its stops are re-optimised from there. The site is removed from other vehicles' routes. The old practice (drive back to the last site and resume) is costed too, and the saving is stored on the alert and plan. |
 | Vehicles break down / go into maintenance | Unschedulable vehicles are excluded from new plans; **Rebalance** (`POST /plans/{id}/rebalance/`) hands a broken-down vehicle's unvisited sites to the rest of the fleet. |
@@ -80,16 +106,31 @@ From the capstone problem definition and design draft.
    plans and re-routes. Tunable via `ROUTING_CIRCUITY` / `ROUTING_NEIGHBOURS`.
 2. **Distance matrix** from Dijkstra (binary heap), Bellman-Ford or
    Floyd-Warshall — they produce identical matrices (tested).
-3. **Daily plan.** Seed each vehicle with a top-priority site, cheapest-insert
-   the rest under a balance cap, order each route tier-by-tier (emergency →
-   high → normal priority) with nearest-neighbour + 2-opt, then relocate sites
-   between vehicles while it shortens the total.
+   Distances can instead come from **OSRM** (real driving distances;
+   `ROUTING_PROVIDER=osrm`), with automatic fallback to the model. The site
+   matrix is cached; live vehicle positions attach to it as leaf points.
+3. **Daily plan.** Multi-start local search: a priority-seeded cheapest
+   insertion and three sweep (angular cluster) starts, each improved with
+   2-opt, relocate, swap and 2-opt* moves costed in O(1); routes are ordered
+   tier by tier (emergency → high → normal priority) and the shortest plan
+   wins. Every vehicle gets at most ceil(n / vehicles) + 1 stops.
 4. **Emergency re-route.** Current position → emergency site → remaining stops
    re-optimised from the emergency site, compared against the old practice of
    driving back to the last visited site and resuming the original order.
 
-On the seeded Singapore data the optimised nightly plan is ~105 km against a
-~232 km manual baseline (≈55% less mileage and CO2e).
+Measured results ([`docs/evaluation/`](docs/evaluation/README.md), reproduce
+with `python -m evaluation.run`):
+
+- Plans are within **1.4–5.5% of Google OR-Tools** on 20–200 random sites,
+  in 0.003–0.6 s (OR-Tools was given 5–30 s); greedy and sweep heuristics are
+  20–55% worse.
+- The demo night is **102 km against a 232 km manual baseline** (56% less
+  mileage and CO2e); costed on real OSRM driving distances it is 118 km
+  against 228 km (48% less).
+- Re-routing after an emergency saves a **median 6.6 km per alarm** on real
+  roads (1,000 simulated alarms; 96% of them see a saving).
+- The road model's distances are within 12–15% of real ones on average
+  (r = 0.96–0.99); 1.3 is the best-fitting circuity factor.
 
 ---
 
@@ -155,7 +196,12 @@ All settings are environment variables — see [`.env.example`](.env.example).
 | `USE_SQLITE` | `True` to skip MySQL for local runs |
 | `MYSQL_*` | Database connection |
 | `COMMAND_CENTRE_PHONE` | Number the duty phone's *Call* button dials |
-| `ROUTING_CIRCUITY`, `ROUTING_NEIGHBOURS` | Road-network model |
+| `ROUTING_PROVIDER` | `road_network` (offline model, default) or `osrm` (real driving distances, falls back to the model) |
+| `OSRM_URL` | OSRM server for `osrm` (the public demo server by default; run your own in production) |
+| `ROUTING_CIRCUITY`, `ROUTING_NEIGHBOURS` | Road-network model (1.3 is the best fit to real Singapore roads, see the evaluation) |
+| `DISTANCE_CACHE_SECONDS` | How long a site distance matrix is cached |
+| `LOGIN_THROTTLE_RATE` | Login attempts allowed per client (default `20/min`) |
+| `DJANGO_HTTPS` | `True` behind TLS: secure cookies, HSTS, HTTPS redirect |
 | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_TEXT_MODEL`, `LLM_VISION_MODEL` | OpenAI-compatible LLM. **Empty key = deterministic offline mode** |
 | `GOOGLE_MAPS_API_KEY` / `REACT_APP_GOOGLE_MAPS_API_KEY` | Google Maps on the dashboard (schematic map otherwise) |
 | `CORS_ALLOWED_ORIGINS` | Dashboard origin(s) |
@@ -185,6 +231,25 @@ All settings are environment variables — see [`.env.example`](.env.example).
 Permissions: admins have full access. Guards can only read their own
 vehicle's stops, records, pings, messages and their own incident reports, and
 cannot reach planning, fleet management, dashboards or the agent.
+
+### Architecture decisions
+
+| Decision | Why | Where |
+|---|---|---|
+| **One service layer per domain** | Planning, check-in, dispatch and triage rules exist once; the API, the AI agent, `plan_daily` and the seeder all call them. | `patrol/services.py`, `incidents/services.py` |
+| **Domain events between apps** | `incidents` publishes `incident_triaged` (the agent subscribes); `patrol` publishes `vehicle_dispatched` (messaging subscribes). Core logic no longer imports the agent or messaging, and a failing agent can never break incident intake. | `*/signals.py`, `*/receivers.py` |
+| **Pluggable distance providers** | The offline road-network model is deterministic and demonstrates the three shortest-path algorithms; OSRM gives real driving distances. If OSRM is down, planning falls back to the model. | `core/services/distance.py` |
+| **Cached site matrix, vehicles as leaf points** | The matrix depends only on site coordinates, so it is cached under a fingerprint of them and never needs manual invalidation. Live GPS positions attach as leaves, so a moving vehicle does not force a recompute. | `patrol.services.site_matrix`, `routing.attach_points` |
+| **O(1) move costs, multi-start local search** | Insertion, removal, 2-opt, swap and 2-opt* are costed from the matrix in constant time; 500 sites plan within the 5 s search budget. | `core/services/routing.py` |
+| **Row locks on state changes** | Alerts, plans, stops and sites are locked while changed. Only an active alert can be dispatched, so two operators (or an operator and the agent) cannot divert two vehicles to one emergency. | `patrol/services.py` |
+| **Human in the loop for AI writes** | The agent proposes; an operator confirms. Every tool call is stored for audit. | `agent/` |
+| **Secure defaults** | Role-scoped querysets, login rate limit, a deploy check that refuses the development `SECRET_KEY`, HTTPS settings behind `DJANGO_HTTPS`, a health check that probes the database. | `core/permissions.py`, `core/checks.py` |
+
+Not done yet, in order of value: a task queue (Celery or RQ) so LLM calls and
+very large plans leave the request cycle; push updates (WebSockets, or FCM for
+the phones) instead of polling; a shared Redis cache across Gunicorn workers
+(the default cache is per process); a production frontend container behind
+nginx.
 
 ### Key endpoints
 
@@ -225,9 +290,15 @@ deterministic keyword router (English and Chinese) keeps it fully demoable.
 ## Tests
 
 ```bash
-USE_SQLITE=True python manage.py test        # 58 backend tests
+USE_SQLITE=True python manage.py test        # 76 backend + evaluation tests
 cd frontend && CI=true npm run build         # dashboard build (warnings fail)
 cd mobile && flutter analyze && flutter test # duty-phone app
 ```
 
-CI runs all three on every push (`.github/workflows/ci.yml`).
+CI runs all three on every push (`.github/workflows/ci.yml`), plus a smoke
+run of the evaluation. The full evaluation needs the development extras:
+
+```bash
+pip install -r requirements-dev.txt          # OR-Tools, matplotlib
+python -m evaluation.run                     # ~8 min; writes docs/evaluation/
+```

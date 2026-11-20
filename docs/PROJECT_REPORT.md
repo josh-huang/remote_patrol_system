@@ -1,10 +1,16 @@
 # Dynamic Patrol Routing System — Project Report
 
-Huang Jiashu · 10 October 2026
+Huang Jiashu · revised 20 November 2026
+
+## Background
+
+This system was first built as my undergraduate capstone (CSC3001 Capstone Project, Singapore Institute of Technology – University of Glasgow Joint Degree in Computing Science, August 2022 – April 2023), an industry project with a Singapore security services company. Its problem definition and design draft are kept in the repository.
+
+The original source code was lost. The version described here is a 2026 rebuild written with AI assistance (Claude Code) from those two documents. It implements every original requirement and goes beyond the original scope in four places, marked as such in this report: the AI agent and LLM incident triage, real road distances through OSRM, the evaluation against OR-Tools, and the architecture hardening.
 
 ## Abstract
 
-The Dynamic Patrol Routing System automates the nightly route planning of a security patrol fleet and cuts the mileage driven, and therefore the carbon emitted, by about 55% against manual planning on the demo data (105 km versus 232 km a night).
+The Dynamic Patrol Routing System automates the nightly route planning of a security patrol fleet and cuts the mileage driven, and therefore the carbon emitted, by about half against manual planning: 56% on the demo night in the road model (102 km versus 232 km) and 48% when the same routes are costed on real driving distances (118 km versus 228 km). Its planner comes within 1.4–5.5% of Google OR-Tools while running in well under a second, and re-routing after an emergency saves a median 6.6 km per alarm on real roads.
 
 Today, command-centre administrators plan routes for roughly 50 sites and 5 vehicles by hand, collect proof-of-visit photos over WhatsApp, and send vehicles back to their original route after every emergency. The system replaces this with three parts: a Django REST backend with a priority-aware multi-vehicle route planner and a dynamic re-router, a React command-centre dashboard, and a Flutter app on each vehicle's duty phone. When an emergency alarm diverts a vehicle, its remaining stops are re-planned from the emergency site instead of driving back, and the saving is recorded. An optional AI agent lets operators run the system in plain language, with every action it proposes held for human confirmation.
 
@@ -64,13 +70,17 @@ Every requirement in the problem definition and the design draft is implemented.
 
 The solution is one backend serving two clients: a web dashboard for the command centre and a mobile app for each vehicle, both reading and writing the same central database.
 
-![System architecture: 2 clients, 6 backend apps, 1 service layer](images/architecture.png)
+![System architecture: 2 clients, 6 backend apps, 1 service layer, optional OSRM and LLM services](images/architecture.png)
 
-Every business rule (planning, check-in, dispatch, re-routing, rebalancing) lives in one service layer, which the API, the AI agent, the nightly command and the demo seeder all call. A rule therefore behaves the same no matter who triggers it.
+Every business rule (planning, check-in, dispatch, re-routing, rebalancing, incident triage) lives in one service layer per domain, which the API, the AI agent, the nightly command and the demo seeder all call. A rule therefore behaves the same no matter who triggers it.
+
+**Domain events.** Apps react to each other through events rather than direct imports. Incident triage publishes `incident_triaged`, to which the AI agent subscribes; dispatching a vehicle publishes `vehicle_dispatched`, to which messaging subscribes and sends the instruction to the duty phone in the same transaction. A failing subscriber to triage is logged and never blocks incident intake.
+
+**Concurrency.** Alerts, plans, stops and sites are row-locked while they change, and only an active alert can be dispatched. Two operators, or an operator and the agent, therefore cannot divert two vehicles to the same emergency, and a double-tapped check-in records one visit.
 
 **Data model.** The main entities follow the design draft: users with an admin or guard role; a guard profile with badge, availability, on-duty and driver flags and its linked vehicle; vehicles with plate, model, engine type, odometer, health status, availability and last known position; sites with coordinates, priority and an emergency flag. A plan holds ordered stops per vehicle, its total and baseline distance and emissions, and its re-route savings. Visits are stored as patrol records with their photos; GPS pings, incident reports, emergency alerts and messages complete the model.
 
-**Roles.** Administrators have full access. Guards can only read their own vehicle's stops, records, pings and messages and their own incident reports, and cannot reach planning, fleet management, dashboards or the agent.
+**Roles and security.** Administrators have full access. Guards can only read their own vehicle's stops, records, pings and messages and their own incident reports, and cannot reach planning, fleet management, dashboards or the agent. Login is rate-limited, a deployment check refuses to start production with the development secret key, HTTPS settings switch on behind TLS, and the health endpoint probes the database.
 
 ## Route planning and dynamic re-routing
 
@@ -94,15 +104,22 @@ Tests confirm they produce identical matrices, and the dashboard's Shortest path
 
 ### Daily multi-vehicle planner
 
-The planner implements the proposal's `shortestRoute(location_list, priority_location, num_car)` as a capacitated, priority-aware multi-vehicle travelling-salesman heuristic:
+The planner implements the proposal's `shortestRoute(location_list, priority_location, num_car)` as a capacitated, priority-aware multi-vehicle routing heuristic with multi-start local search:
 
-1. Build the distance matrix with the chosen algorithm.
-2. Give each vehicle one of the highest-priority sites as a seed.
-3. Insert the remaining sites one by one at the position that adds the least distance, capping each vehicle at ceil(n / vehicles) + 1 stops so the work is shared fairly.
-4. Re-order each route tier by tier: emergency sites first, then high and normal priority. Each tier is built with nearest-neighbour and improved with 2-opt.
-5. Move single sites between vehicles while doing so shortens the total, then re-optimise each route.
+1. Read the distance matrix (cached; see *Distance providers* below).
+2. Build four starting plans: one seeds each vehicle with a highest-priority site and inserts the rest at the position that adds the least distance; three sweep the sites around their centroid into equal sectors, at different rotations. Every vehicle gets at least one stop and at most ceil(n / vehicles) + 1, so the work is shared fairly.
+3. Improve each start with local search until no move helps: 2-opt inside a route, relocating a site (within or between routes), swapping two sites between routes, and exchanging the tails of two routes (2-opt*).
+4. Order each route tier by tier (emergency sites first, then high and normal priority) and keep the shortest plan. A tier-aware insertion plan is always a candidate, since it can win when priority tiers dominate.
+
+Every move is costed in constant time from the matrix, because only the edges at its ends change. On 300 sites this cut planning time from 4.5 s to 0.4 s compared with re-summing whole routes, and 500 sites plan within a 5 s search budget.
 
 Only operational vehicles are planned: those marked available and not in service or out of service. Vehicles can start from a shared depot or from their live GPS positions. The `plan_daily` command runs this nightly from cron, so no administrator input is needed.
+
+### Distance providers (added in the rebuild)
+
+Where the kilometres come from is pluggable. The default provider is the road-network model above: offline, deterministic, and the place where the three shortest-path algorithms run. The OSRM provider returns real driving distances on OpenStreetMap roads from an OSRM server's table service, averaged over both directions so the matrix stays symmetric. If OSRM cannot be reached, planning falls back to the model automatically.
+
+The site-to-site matrix depends only on site coordinates, so it is cached under a fingerprint of them: adding, moving or deactivating a site produces a new cache key, and nothing has to be invalidated by hand. A vehicle's live position joins the network as a *leaf* through its nearest sites. A route can start there but never passes through it, so a moving vehicle never forces the matrix to be recomputed.
 
 ### Dynamic re-routing after an emergency
 
@@ -171,7 +188,7 @@ The Flutter app runs on the phone in each vehicle. Each guard account is linked 
 
 The app talks to the same REST API as the dashboard, using JWT tokens that refresh automatically. The design draft suggested Firestore for mobile data; using the shared API and MySQL database instead keeps one source of truth for both clients.
 
-## AI agent and incident triage
+## AI agent and incident triage (added in the rebuild)
 
 AI is used in two places, and in both a human stays in control: the agent proposes, an operator confirms.
 
@@ -196,53 +213,101 @@ The stack follows the design draft (Django, MySQL, React, Flutter) and adds only
 | Authentication | JWT (SimpleJWT) with refresh-token rotation | Stateless tokens suit a mobile client; roles separate admins and guards |
 | API documentation | drf-spectacular (OpenAPI 3, Swagger UI) | Always-current contract for the mobile app |
 | Database | MySQL 8 (PyMySQL driver); SQLite for development | Central store required by the proposal; SQLite for zero-setup runs |
-| Algorithms | Pure Python: haversine, Prim's MST, Dijkstra, Bellman-Ford, Floyd-Warshall, insertion and 2-opt heuristics | No paid routing API; fully unit-testable |
+| Algorithms | Pure Python: haversine, Prim's MST, Dijkstra, Bellman-Ford, Floyd-Warshall, insertion, sweep and local-search heuristics | No paid routing API; fully unit-testable |
 | Dashboard | React 18, Material UI, MUI Data Grid, Nivo charts | Component library for data-heavy admin pages |
 | Maps | Google Maps JavaScript API (`@react-google-maps/api`), SVG fallback | Live tracking as specified; works without a key |
 | Mobile app | Flutter (Dart) with http, geolocator, image_picker, url_launcher, shared_preferences | One codebase for Android and iOS; GPS, camera, maps and phone calls |
 | AI | OpenAI-compatible chat and vision models via the `openai` SDK, with offline fallback | Provider-agnostic; demoable without a key |
+| Real road distances | OSRM table service (optional provider) | True driving distances without a paid API; falls back to the model |
+| Evaluation | Google OR-Tools (reference solver), matplotlib | Near-optimal benchmark and charts; development-only dependencies |
 | Deployment | Docker Compose (MySQL, Gunicorn web, dashboard), environment-based settings | Same setup on any machine |
 | Quality | Django test runner, GitHub Actions CI (backend tests, schema check, dashboard build, Flutter analyze and test) | Every push is checked |
 
 ## Testing and evaluation
 
-Automated planning cut nightly mileage by 55% against the manual baseline on the demo data, and all automated tests pass.
+Automated tests cover every layer, and a reproducible evaluation (`python -m evaluation.run`, added in the rebuild) measures the planner against stronger baselines, simulates emergencies, and checks the road model against real driving distances. Full tables: [`docs/evaluation/`](evaluation/README.md).
 
 ### Tests
 
 | Suite | Count | Covers |
 | --- | --- | --- |
-| Backend (Django) | 58 tests | Algorithm correctness and agreement, planner coverage, balance and priority order, re-route never worse than driving back, emissions, every API flow, role-based access |
+| Backend (Django) | 76 tests | Algorithm correctness and agreement, O(1) move costs against full recomputation, planner coverage, balance and priority order, re-route never worse than driving back, OSRM provider and fallback, matrix cache, concurrency (double dispatch), events, login throttle, deploy check, every API flow, role-based access, the evaluation code |
 | Dashboard | Production build with warnings treated as errors | All 12 pages also opened in a headless browser with no console errors |
 | Mobile (Flutter) | Static analysis plus 2 tests | Sign-in screen; parsing of the route payload |
 
-### Results
+### Planning quality against stronger baselines
 
-Measured on the seeded Singapore demo (20 sites, 4 operational vehicles) and on 50 randomly placed sites across Singapore with 5 vehicles:
+On random sites across Singapore's main island (about ten sites per vehicle), every method covered every site under the same balance cap. Google OR-Tools, an industrial routing solver, ran guided local search for 5–30 s per instance as a near-optimal reference.
 
-| Scenario | Optimised route | Manual baseline | Saving |
-| --- | --- | --- | --- |
-| Demo night, 20 sites, 4 vehicles | 105.2 km | 232.3 km | 127.1 km (55%), 18.3 kg CO2e |
-| Random 50 sites, 5 vehicles | 359 km | 1,009 km | 650 km (64%) |
-| Emergency diversion (demo) | 35.6 km | 48.1 km driving back | 12.5 km |
+![Planning quality](evaluation/planning_quality.png)
 
-The 50-site plan was computed in about 10 ms. Building the all-pairs matrix for 50 sites took 4 ms with Dijkstra, 15 ms with Bellman-Ford and 9 ms with Floyd-Warshall, and all three gave the same distances. A re-route saves nothing when the vehicle's last visited site already lies on the shortest road path; the system reports 0 km in that case rather than an estimate.
+| Sites, vehicles | This system vs OR-Tools | Greedy nearest | Sweep | Manual round-robin | This system's time |
+| --- | --- | --- | --- | --- | --- |
+| 20, 3 (10 instances) | +1.4% | +25.9% | +27.7% | +264% | 0.003 s |
+| 50, 5 (10 instances) | +3.2% (shorter on 1) | +29.7% | +22.6% | +532% | 0.02 s |
+| 100, 10 (5 instances) | +5.5% (shorter on 1) | +28.2% | +46.0% | +911% | 0.12 s |
+| 200, 20 (3 instances) | +1.8% (shorter on 2) | +28.7% | +55.4% | +1260% | 0.6 s |
 
-The baseline is a stand-in for manual planning, not data from the client's actual routes, so the real-world saving should be confirmed against recorded mileage.
+This system's plans are within 1.4–5.5% of OR-Tools, and shorter than OR-Tools on 4 of the 28 instances, at a fraction of the run time. The round-robin baseline is a deliberately simple stand-in for manual planning; against random sites it is far worse than a person would be, so the credible comparison is with the greedy and sweep heuristics, which this system beats by 20–50%.
+
+An earlier version of the planner (insertion plus relocation only) was 26% above OR-Tools at 50 sites. The evaluation exposed this, and the multi-start local search described above closed most of the gap.
+
+### Dynamic re-routing
+
+1,000 simulated alarms per scenario: a random vehicle is between two stops when an alarm goes off at a site still waiting on another vehicle's route. The old practice (go to the emergency, drive back to the last visited site, resume) is costed against the system's re-route.
+
+![Re-routing savings](evaluation/reroute_savings.png)
+
+| Scenario | Median saved | Mean saved | 90th percentile | Alarms with a saving | Saving vs driving back |
+| --- | --- | --- | --- | --- | --- |
+| Demo night, real roads | 6.6 km | 8.5 km | 20.0 km | 95.7% | 17.7% |
+| Demo night, road model | 11.3 km | 13.7 km | 27.1 km | 100% | 25.9% |
+| 50 random sites, road model | 2.6 km | 4.7 km | 12.4 km | 81.5% | 8.4% |
+
+A re-route saves nothing when the site the vehicle would drive back to already lies on its way; the system then reports 0 km.
+
+### Road model against real roads
+
+Real driving distances for every pair of the 20 demo sites and of 100 random sites came from the OSRM routing engine on OpenStreetMap data, with sites snapped to the nearest road.
+
+![Road model accuracy](evaluation/road_model_accuracy.png)
+
+| Sites | Real ÷ straight line (median) | Straight line error | Straight × 1.3 error | Road model error | Correlation |
+| --- | --- | --- | --- | --- | --- |
+| 20 demo | 1.37 | 29.5% | 11.6% | 11.8% | 0.987 |
+| 100 random | 1.45 | 32.6% | 14.0% | 15.0% | 0.960 |
+
+Errors are mean absolute percentage errors. The model's 1.3 circuity factor is the best fit: higher values make the model overestimate, because the sparse network already adds detours. The network does not beat a plain straight-line × 1.3 estimate on accuracy; its value is that it gives the shortest-path algorithms a real graph to search. Where accuracy matters, the OSRM provider uses real distances.
+
+On real roads the demo night still halves: the manual round-robin plan is 228.0 km, the plan made on the model 117.8 km (48% shorter), and a plan made directly on OSRM distances 109.9 km (52% shorter).
+
+### Shortest-path algorithms and scaling
+
+![Algorithm run times](evaluation/algorithm_runtimes.png)
+
+All three algorithms return identical distance matrices. At 200 sites the all-pairs matrix takes 0.04 s with Dijkstra, 0.10 s with Floyd-Warshall and 0.24 s with Bellman-Ford, so Dijkstra is the default.
+
+![Scalability](evaluation/scalability.png)
+
+A full plan takes under a second up to 200 sites and about 1–1.6 s at 300; at 500 sites the local search reaches its 5 s budget and returns its best plan so far.
+
+The manual baseline is still a stand-in, not the client's recorded routes, so the real-world saving should be confirmed against actual mileage.
 
 ## Limitations and future work
 
 The main limits come from approximating the road network and from validating on demo data rather than live operations.
 
-- **Road distances are approximate.** The nearest-neighbour network with a 1.3 circuity factor stands in for real roads. A road-network source such as OpenStreetMap or a distance-matrix API would give true driving distances and travel times, and would make the best-traffic comparison real rather than modelled.
-- **Heuristic, not optimal.** Multi-vehicle routing is NP-hard; insertion plus 2-opt and relocation gives good routes quickly but not proven optima. Metaheuristics from the literature (genetic algorithms, ant colony, tabu search) or an integer-programming solver could be benchmarked against it.
+- **The default distances are approximate.** The road model is off by 12–15% on average against real roads. The OSRM provider fixes this for distance, but neither models traffic or travel time, so the best-traffic comparison is still modelled; a time-aware matrix (OSRM durations, or a traffic API) is the next step.
+- **Heuristic, not optimal.** Multi-vehicle routing is NP-hard. The planner is within 1.4–5.5% of OR-Tools; using OR-Tools itself as an optional solver, with priority tiers expressed as constraints, would close the rest at the cost of seconds per plan.
+- **Scale.** Pure Python reaches its 5 s budget at about 500 sites. Beyond that, a compiled solver or a cluster-first split into regions would be needed.
 - **No time windows or shift limits.** Plans balance the number of stops, not driving time, and do not model site opening hours or a maximum shift length.
 - **Emission factors are averages.** Per-vehicle fuel consumption from telematics would make the estimates specific to each vehicle.
 - **Validation.** The manual baseline should be compared with the client's recorded routes, and the Flutter app still needs testing on physical Android and iOS devices.
 - **Notifications.** The duty phone polls for re-routes and messages; push notifications (for example Firebase Cloud Messaging) would deliver emergencies instantly.
+- **Background work.** LLM triage and very large plans run inside the web request. A task queue (Celery or RQ) would move them out, and a shared Redis cache would let all web workers reuse one distance matrix.
 
 ## Conclusion
 
 The Dynamic Patrol Routing System meets all four objectives of the problem definition. Nightly routes are planned automatically from the vehicles fit to drive, covering every site with priority sites first. Vehicles diverted to an emergency carry on from the emergency site instead of driving back. The command centre has live tracking, vehicle details, an emergency noticeboard and a carbon view. Guards plan, check in, report and contact the command centre from one app.
 
-On the demo data, the system cuts nightly mileage and CO2e by about 55% against manual planning and removes the nightly planning task altogether. The next steps are real road distances and validation against the client's recorded routes.
+The evaluation supports the design: plans within a few percent of an industrial solver in under a second, about half the mileage and CO2e of the manual baseline even on real roads, and a median 6.6 km saved per emergency diversion. The nightly planning task disappears altogether. The next steps are travel-time-aware distances and validation against the client's recorded routes.
