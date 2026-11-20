@@ -1,4 +1,4 @@
-from core.tests.fixtures import PatrolAPITestCase
+from core.tests.fixtures import PatrolAPITestCase, new_password
 from patrol.models import PatrolStop
 
 
@@ -74,7 +74,7 @@ class DashboardAndReportTests(PatrolAPITestCase):
     def test_guard_management(self):
         res = self.admin_client.post(
             "/api/v1/guards/",
-            {"username": "newguard", "password": "a-strong-pass-987", "first_name": "New", "badge_number": "B9",
+            {"username": "newguard", "password": new_password(), "first_name": "New", "badge_number": "B9",
              "assigned_vehicle": self.vehicles[1].id, "is_driver": True},
             format="json",
         )

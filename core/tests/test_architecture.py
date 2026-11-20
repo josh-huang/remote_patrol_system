@@ -176,7 +176,7 @@ class SecurityTests(PatrolAPITestCase):
         client = APIClient()
         with mock.patch.object(ScopedRateThrottle, "THROTTLE_RATES", {"login": "2/min"}):
             codes = [
-                client.post("/api/v1/auth/token/", {"username": "guard1", "password": "wrong"}).status_code
+                client.post("/api/v1/auth/token/", {"username": "guard1", "password": "not-the-password"}).status_code
                 for _ in range(3)
             ]
         cache.clear()

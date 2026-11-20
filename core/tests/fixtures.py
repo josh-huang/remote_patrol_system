@@ -1,6 +1,7 @@
 """Shared builders for API tests."""
 
 import io
+import secrets
 import shutil
 import tempfile
 
@@ -27,6 +28,13 @@ SITES = [
 
 MEDIA = tempfile.mkdtemp(prefix="patrol-test-media-")
 
+# Generated per run so no credential-like literal lives in the repository.
+TEST_PASSWORD = secrets.token_urlsafe(16)
+
+
+def new_password() -> str:
+    return secrets.token_urlsafe(16)
+
 
 def png(name="site.png"):
     buf = io.BytesIO()
@@ -43,7 +51,7 @@ class PatrolAPITestCase(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.admin = User.objects.create_user("admin", password="x-admin-pass-123", role=User.Role.ADMIN)
+        cls.admin = User.objects.create_user("admin", password=TEST_PASSWORD, role=User.Role.ADMIN)
         cls.sites = [
             Location.objects.create(name=n, latitude=lat, longitude=lng, priority=p) for n, lat, lng, p in SITES
         ]
@@ -54,11 +62,11 @@ class PatrolAPITestCase(TestCase):
                                    current_latitude=1.3530, current_longitude=103.9400),
             Vehicle.objects.create(plate_number="SPT3", engine_type="diesel", maintenance_status="in_service"),
         ]
-        cls.guard_user = User.objects.create_user("guard1", password="x-guard-pass-123", role=User.Role.GUARD)
+        cls.guard_user = User.objects.create_user("guard1", password=TEST_PASSWORD, role=User.Role.GUARD)
         cls.guard = SecurityGuard.objects.create(
             user=cls.guard_user, badge_number="B1", is_driver=True, assigned_vehicle=cls.vehicles[0]
         )
-        cls.other_guard_user = User.objects.create_user("guard2", password="x-guard-pass-123", role=User.Role.GUARD)
+        cls.other_guard_user = User.objects.create_user("guard2", password=TEST_PASSWORD, role=User.Role.GUARD)
         SecurityGuard.objects.create(
             user=cls.other_guard_user, badge_number="B2", is_driver=True, assigned_vehicle=cls.vehicles[1]
         )

@@ -1,13 +1,13 @@
 from rest_framework.test import APIClient
 
-from core.tests.fixtures import PatrolAPITestCase, png
+from core.tests.fixtures import TEST_PASSWORD, PatrolAPITestCase, png
 from patrol.models import PatrolPlan, PatrolRecord, PatrolStop
 
 
 class AuthTests(PatrolAPITestCase):
     def test_jwt_login_and_me(self):
         client = APIClient()
-        res = client.post("/api/v1/auth/token/", {"username": "guard1", "password": "x-guard-pass-123"})
+        res = client.post("/api/v1/auth/token/", {"username": "guard1", "password": TEST_PASSWORD})
         self.assertEqual(res.status_code, 200)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {res.json()['access']}")
         me = client.get("/api/v1/me/").json()
