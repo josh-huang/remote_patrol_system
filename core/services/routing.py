@@ -502,6 +502,156 @@ def _planned(i: int, start: int | None, order: list[int], matrix: Matrix) -> Pla
     )
 
 
+def _replace_cost(route: list[int], idx: int, new: int, matrix: Matrix, start: int | None) -> float:
+    """Change in km when ``route[idx]`` is replaced by ``new`` — O(1)."""
+    prev = route[idx - 1] if idx > 0 else start
+    nxt = route[idx + 1] if idx + 1 < len(route) else None
+    old = route[idx]
+    return (
+        _link(matrix, prev, new) + _link(matrix, new, nxt) - _link(matrix, prev, old) - _link(matrix, old, nxt)
+    )
+
+
+def _relocate_pass(routes, matrix, starts, cap, eps=1e-6) -> bool:
+    """Move single sites to their cheapest position in any route (incl. their own)."""
+    improved = False
+    for a in range(len(routes)):
+        idx = 0
+        while idx < len(routes[a]):
+            if len(routes[a]) <= 1:
+                break
+            site = routes[a][idx]
+            gain = removal_gain(routes[a], idx, matrix, starts[a])
+            best = None
+            for b in range(len(routes)):
+                if b != a and len(routes[b]) >= cap:
+                    continue
+                target = routes[b] if b != a else routes[a][:idx] + routes[a][idx + 1 :]
+                pos, added = cheapest_insertion(target, site, matrix, starts[b])
+                if added < gain - eps and (best is None or added < best[2]):
+                    best = (b, pos, added)
+            if best:
+                b, pos, _ = best
+                del routes[a][idx]
+                routes[b].insert(pos, site)
+                improved = True
+                if b != a:
+                    continue
+            idx += 1
+    return improved
+
+
+def _swap_pass(routes, matrix, starts, eps=1e-6) -> bool:
+    """Exchange two sites between two routes when that shortens the total."""
+    improved = False
+    for a in range(len(routes)):
+        for b in range(a + 1, len(routes)):
+            A, B = routes[a], routes[b]
+            for i in range(len(A)):
+                for j in range(len(B)):
+                    delta = _replace_cost(A, i, B[j], matrix, starts[a]) + _replace_cost(
+                        B, j, A[i], matrix, starts[b]
+                    )
+                    if delta < -eps:
+                        A[i], B[j] = B[j], A[i]
+                        improved = True
+    return improved
+
+
+def _tail_exchange_pass(routes, matrix, starts, cap, eps=1e-6) -> bool:
+    """2-opt*: swap the tails of two routes (cut each anywhere, even before
+    the first stop), keeping every route non-empty and within the cap."""
+    improved = False
+    for a in range(len(routes)):
+        for b in range(a + 1, len(routes)):
+            A, B = routes[a], routes[b]
+            done = False
+            for i in range(-1, len(A)):
+                head_a = A[i] if i >= 0 else starts[a]
+                after_a = A[i + 1] if i + 1 < len(A) else None
+                for j in range(-1, len(B)):
+                    after_b = B[j + 1] if j + 1 < len(B) else None
+                    if after_a is None and after_b is None:
+                        continue
+                    new_a, new_b = (i + 1) + (len(B) - j - 1), (j + 1) + (len(A) - i - 1)
+                    if not (0 < new_a <= cap and 0 < new_b <= cap):
+                        continue
+                    head_b = B[j] if j >= 0 else starts[b]
+                    delta = (
+                        _link(matrix, head_a, after_b) + _link(matrix, head_b, after_a)
+                        - _link(matrix, head_a, after_a) - _link(matrix, head_b, after_b)
+                    )
+                    if delta < -eps:
+                        routes[a], routes[b] = A[: i + 1] + B[j + 1 :], B[: j + 1] + A[i + 1 :]
+                        improved = done = True
+                        break
+                if done:
+                    break
+    return improved
+
+
+def local_search(
+    routes: list[list[int]],
+    matrix: Matrix,
+    starts: list[int | None],
+    cap: int,
+    deadline: float | None = None,
+) -> list[list[int]]:
+    """Improve a multi-route solution until no move helps (or time runs out).
+
+    Moves: 2-opt inside each route, relocate (within and between routes),
+    swap between routes and tail exchange (2-opt*) between routes. Each move
+    is costed in O(1).
+    """
+    routes = [list(r) for r in routes]
+    for _ in range(200):
+        improved = False
+        for i, r in enumerate(routes):
+            better = two_opt(r, matrix, starts[i])
+            if path_length(better, matrix, starts[i]) < path_length(r, matrix, starts[i]) - 1e-9:
+                routes[i], improved = better, True
+        improved |= _relocate_pass(routes, matrix, starts, cap)
+        improved |= _swap_pass(routes, matrix, starts)
+        improved |= _tail_exchange_pass(routes, matrix, starts, cap)
+        if not improved or (deadline is not None and time.perf_counter() > deadline):
+            break
+    return routes
+
+
+def _insertion_start(candidates, num_vehicles, matrix, starts, cap) -> list[list[int]]:
+    """Seed each vehicle with a top-priority site, then cheapest insertion."""
+    routes: list[list[int]] = [[] for _ in range(num_vehicles)]
+    free = set(range(num_vehicles))
+    for site in candidates[:num_vehicles]:
+        best = min(free, key=lambda i: _link(matrix, starts[i], site))
+        routes[best].append(site)
+        free.discard(best)
+    for site in candidates[num_vehicles:]:
+        best_i, best_pos, best_delta = 0, 0, INF
+        for i, order in enumerate(routes):
+            if len(order) >= cap:
+                continue
+            pos, delta = cheapest_insertion(order, site, matrix, starts[i])
+            if delta < best_delta:
+                best_i, best_pos, best_delta = i, pos, delta
+        routes[best_i].insert(best_pos, site)
+    return routes
+
+
+def _sweep_start(candidates, node_by_id, num_vehicles, matrix, offset: float) -> list[list[int]]:
+    """Cluster-first: equal angular sectors around the centroid, rotated by
+    ``offset`` (a fraction of a sector), each routed with nearest neighbour."""
+    pts = [node_by_id[c] for c in candidates]
+    clat = sum(p.lat for p in pts) / len(pts)
+    clng = sum(p.lng for p in pts) / len(pts)
+    ordered = sorted(pts, key=lambda p: math.atan2(p.lat - clat, p.lng - clng))
+    size = math.ceil(len(ordered) / num_vehicles)
+    shift = int(offset * size) % len(ordered)
+    ordered = ordered[shift:] + ordered[:shift]
+    routes = [[p.id for p in ordered[i * size : (i + 1) * size]] for i in range(num_vehicles)]
+    return [nearest_neighbour(r, matrix, None) for r in routes]
+
+
 def plan_patrol_routes(
     nodes: list[Node],
     num_vehicles: int,
@@ -511,6 +661,7 @@ def plan_patrol_routes(
     graph: Graph | None = None,
     priority_tiers: bool = True,
     matrix: Matrix | None = None,
+    time_limit: float = 5.0,
 ) -> list[PlannedRoute]:
     """Assign every site to a vehicle and order each vehicle's stops.
 
@@ -523,19 +674,22 @@ def plan_patrol_routes(
       at each vehicle's live position); overrides ``depot_id``.
     * ``matrix``     – precomputed distances (any provider); otherwise built
       from ``graph`` (default: the road network) with ``algorithm``.
+    * ``time_limit`` – seconds of local search at most (it usually stops
+      sooner, when no move improves the plan).
 
-    Strategy:
-      1. Seed each vehicle with the highest-priority unassigned site.
-      2. Cheapest-insertion of the remaining sites with a balance cap
-         (ceil(n / vehicles) + 1 stops) so work is shared fairly.
-      3. Re-order each route tier-by-tier (NN + 2-opt).
-      4. Inter-route *relocate* moves while they reduce total distance.
-    Every move is costed in O(1) from the matrix, so the planner stays fast for
-    hundreds of sites.
+    Strategy (multi-start local search):
+      1. Build starting plans: priority-seeded cheapest insertion, and sweep
+         clusters at three rotations. Every vehicle gets at least one stop and
+         at most ceil(n / vehicles) + 1, so work is shared fairly.
+      2. Improve each with 2-opt, relocate, swap and 2-opt* moves, then order
+         each route priority-tier by tier.
+      3. Keep the shortest, also comparing a tier-aware insertion + relocate
+         plan, which wins when priority tiers dominate.
     """
     if num_vehicles < 1:
         raise ValueError("num_vehicles must be >= 1")
 
+    deadline = time.perf_counter() + time_limit
     matrix = _resolve_matrix(nodes, matrix, graph, algorithm)
     node_by_id = {n.id: n for n in nodes}
 
@@ -552,57 +706,56 @@ def plan_patrol_routes(
         return [PlannedRoute(i, start_ids[i], [], 0.0, []) for i in range(num_vehicles)]
 
     cap = math.ceil(len(candidates) / num_vehicles) + 1
-    routes: list[list[int]] = [[] for _ in range(num_vehicles)]
 
-    # 1. Seed: spread the top-priority sites, nearest start first.
-    free = set(range(num_vehicles))
-    for site in candidates[:num_vehicles]:
-        best = min(free, key=lambda i: _link(matrix, start_ids[i], site))
-        routes[best].append(site)
-        free.discard(best)
+    def total(routes):
+        return sum(path_length(r, matrix, start_ids[i]) for i, r in enumerate(routes))
 
-    # 2. Cheapest insertion with balance cap.
-    for site in candidates[num_vehicles:]:
-        best_i, best_pos, best_delta = 0, 0, INF
-        for i, order in enumerate(routes):
-            if len(order) >= cap:
-                continue
-            pos, delta = cheapest_insertion(order, site, matrix, start_ids[i])
-            if delta < best_delta:
-                best_i, best_pos, best_delta = i, pos, delta
-        routes[best_i].insert(best_pos, site)
+    def tier_ordered(routes):
+        final = []
+        for i, route in enumerate(routes):
+            kept = _order_by_tiers(route, matrix, start_ids[i], priority)
+            rebuilt = optimise_path(route, matrix, start_ids[i], priority)
+            final.append(min((kept, rebuilt), key=lambda r: path_length(r, matrix, start_ids[i])))
+        return final
 
-    # 3. Intra-route optimisation respecting priority tiers.
-    routes = [optimise_path(r, matrix, start_ids[i], priority) for i, r in enumerate(routes)]
-
-    # 4. Inter-route relocate: move a site to another vehicle when the km
-    # saved by removing it exceeds the km added by its cheapest insertion.
+    insertion = _insertion_start(candidates, num_vehicles, matrix, start_ids, cap)
+    # The tier-aware pipeline (order tiers first, then relocate between
+    # routes) is always a candidate: with strong priority tiers it can beat
+    # tier-blind local search followed by tier ordering.
+    tiered = tier_ordered(insertion)
     for _ in range(100):
-        moved = False
-        for a in range(num_vehicles):
-            idx = 0
-            while idx < len(routes[a]) and len(routes[a]) > 1:
-                gain = removal_gain(routes[a], idx, matrix, start_ids[a])
-                site = routes[a][idx]
-                target = None
-                for b in range(num_vehicles):
-                    if b == a or len(routes[b]) >= cap:
-                        continue
-                    pos, added = cheapest_insertion(routes[b], site, matrix, start_ids[b])
-                    if added < gain - 1e-6:
-                        target = (b, pos)
-                        break
-                if target:
-                    del routes[a][idx]
-                    routes[target[0]].insert(target[1], site)
-                    moved = True
-                else:
-                    idx += 1
-        if not moved:
+        if not _relocate_pass(tiered, matrix, start_ids, cap):
             break
-    routes = [optimise_path(r, matrix, start_ids[i], priority) for i, r in enumerate(routes)]
+    best = tier_ordered(tiered)
 
-    return [_planned(i, start_ids[i], order, matrix) for i, order in enumerate(routes)]
+    starts = [insertion]
+    if len(candidates) > num_vehicles:
+        starts += [
+            _sweep_start(candidates, node_by_id, num_vehicles, matrix, offset) for offset in (0.0, 1 / 3, 2 / 3)
+        ]
+    for start in starts:
+        if time.perf_counter() > deadline:
+            break
+        start = list(start) + [[] for _ in range(num_vehicles - len(start))]
+        candidate = tier_ordered(local_search(start, matrix, start_ids, cap, deadline))
+        if total(candidate) < total(best) - 1e-9:
+            best = candidate
+    return [_planned(i, start_ids[i], order, matrix) for i, order in enumerate(best)]
+
+
+def _order_by_tiers(
+    route: list[int], matrix: Matrix, start: int | None, priority: dict[int, int]
+) -> list[int]:
+    """Visit higher-priority tiers first, keeping each tier's current order
+    (already optimised) and polishing it with 2-opt."""
+    order: list[int] = []
+    cursor = start
+    for level in sorted({priority.get(s, 0) for s in route}, reverse=True):
+        segment = two_opt([s for s in route if priority.get(s, 0) == level], matrix, cursor)
+        order.extend(segment)
+        if segment:
+            cursor = segment[-1]
+    return order
 
 
 def baseline_routes(

@@ -4,9 +4,11 @@ from patrol.models import PatrolStop
 
 class DashboardAndReportTests(PatrolAPITestCase):
     def _patrol(self):
+        """Plan the night and check in at the first two stops of each vehicle."""
         self.make_plan()
-        for stop in PatrolStop.objects.order_by("vehicle_id", "order")[:4]:
-            self.admin_client.post(f"/api/v1/stops/{stop.id}/check_in/", {}, format="multipart")
+        for vehicle in self.vehicles[:2]:
+            for stop in PatrolStop.objects.filter(vehicle=vehicle).order_by("order")[:2]:
+                self.admin_client.post(f"/api/v1/stops/{stop.id}/check_in/", {}, format="multipart")
 
     def test_dashboard_summary(self):
         self._patrol()
@@ -62,7 +64,9 @@ class DashboardAndReportTests(PatrolAPITestCase):
         spt1 = next(v for v in vehicles if v["plate_number"] == "SPT1")
         self.assertEqual(spt1["driver_name"], "guard1")
         self.assertIsNotNone(spt1["current_plan"])
-        self.assertIsNotNone(spt1["next_location"])
+        self.assertEqual(spt1["route_progress"]["visited"], 2)
+        if spt1["route_progress"]["total"] > 2:
+            self.assertIsNotNone(spt1["next_location"])
         self.assertGreaterEqual(spt1["patrol_mileage_km"], 0)
         spt3 = next(v for v in vehicles if v["plate_number"] == "SPT3")
         self.assertFalse(spt3["is_operational"])
