@@ -75,3 +75,66 @@ class IncidentImage(models.Model):
 
     def __str__(self) -> str:
         return f"Image for incident #{self.incident_id}"
+
+
+class EmergencyAlert(TimeStampedModel):
+    """An emergency alarm raised at a patrol site.
+
+    Shown on the command-centre noticeboard. Dispatching an alert diverts the
+    nearest operational vehicle and dynamically re-plans the rest of its
+    route (see ``patrol.services.dispatch_alert``); the mileage and CO2e saved
+    versus driving back to the original route are recorded here.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        DISPATCHED = "dispatched", "Vehicle dispatched"
+        RESOLVED = "resolved", "Resolved"
+
+    class Source(models.TextChoices):
+        ALARM = "alarm", "Site alarm"
+        MANUAL = "manual", "Command centre"
+        INCIDENT = "incident", "Incident report"
+        AGENT = "agent", "AI agent"
+
+    location = models.ForeignKey(
+        "fleet.Location", on_delete=models.CASCADE, related_name="alerts"
+    )
+    description = models.TextField(blank=True)
+    source = models.CharField(max_length=16, choices=Source.choices, default=Source.MANUAL)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.ACTIVE, db_index=True
+    )
+    incident = models.ForeignKey(
+        IncidentReport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="alerts",
+    )
+    raised_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="raised_alerts",
+    )
+    assigned_vehicle = models.ForeignKey(
+        "fleet.Vehicle",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="alerts",
+    )
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    # Dynamic re-routing outcome.
+    baseline_km = models.FloatField(default=0.0)
+    rerouted_km = models.FloatField(default=0.0)
+    saved_km = models.FloatField(default=0.0)
+    saved_kg = models.FloatField(default=0.0)
+    reroute_detail = models.JSONField(default=dict, blank=True)
+
+    def __str__(self) -> str:
+        return f"Alert #{self.pk} @ {self.location} [{self.status}]"

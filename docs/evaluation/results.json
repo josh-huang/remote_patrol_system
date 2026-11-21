@@ -1,0 +1,1584 @@
+{
+ "generated": "2026-11-20",
+ "python": "3.13.18",
+ "quick": false,
+ "planning_quality": {
+  "summary": [
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "method": "Manual (round-robin)",
+    "instances": 10,
+    "mean_km": 271.8,
+    "gap_to_best_pct": 263.7,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 263.7,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "method": "Greedy nearest",
+    "instances": 10,
+    "mean_km": 94.3,
+    "gap_to_best_pct": 25.9,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 25.9,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "method": "Sweep",
+    "instances": 10,
+    "mean_km": 95.2,
+    "gap_to_best_pct": 27.7,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 27.7,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "method": "This system",
+    "instances": 10,
+    "mean_km": 76.0,
+    "gap_to_best_pct": 1.4,
+    "mean_seconds": 0.003,
+    "gap_to_ortools_pct": 1.4,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "method": "OR-Tools (reference)",
+    "instances": 10,
+    "mean_km": 74.9,
+    "gap_to_best_pct": 0.0,
+    "mean_seconds": 5.007,
+    "gap_to_ortools_pct": 0.0,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "method": "Manual (round-robin)",
+    "instances": 10,
+    "mean_km": 800.9,
+    "gap_to_best_pct": 532.6,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 532.0,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "method": "Greedy nearest",
+    "instances": 10,
+    "mean_km": 164.3,
+    "gap_to_best_pct": 29.8,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 29.7,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "method": "Sweep",
+    "instances": 10,
+    "mean_km": 155.3,
+    "gap_to_best_pct": 22.7,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 22.6,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "method": "This system",
+    "instances": 10,
+    "mean_km": 130.8,
+    "gap_to_best_pct": 3.3,
+    "mean_seconds": 0.023,
+    "gap_to_ortools_pct": 3.2,
+    "beats_ortools": 1
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "method": "OR-Tools (reference)",
+    "instances": 10,
+    "mean_km": 126.7,
+    "gap_to_best_pct": 0.1,
+    "mean_seconds": 10.001,
+    "gap_to_ortools_pct": 0.0,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "method": "Manual (round-robin)",
+    "instances": 5,
+    "mean_km": 1772.1,
+    "gap_to_best_pct": 912.4,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 911.1,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "method": "Greedy nearest",
+    "instances": 5,
+    "mean_km": 224.6,
+    "gap_to_best_pct": 28.3,
+    "mean_seconds": 0.002,
+    "gap_to_ortools_pct": 28.2,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "method": "Sweep",
+    "instances": 5,
+    "mean_km": 256.2,
+    "gap_to_best_pct": 46.2,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 46.0,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "method": "This system",
+    "instances": 5,
+    "mean_km": 185.2,
+    "gap_to_best_pct": 5.6,
+    "mean_seconds": 0.121,
+    "gap_to_ortools_pct": 5.5,
+    "beats_ortools": 1
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "method": "OR-Tools (reference)",
+    "instances": 5,
+    "mean_km": 175.5,
+    "gap_to_best_pct": 0.1,
+    "mean_seconds": 20.002,
+    "gap_to_ortools_pct": 0.0,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "method": "Manual (round-robin)",
+    "instances": 3,
+    "mean_km": 3461.6,
+    "gap_to_best_pct": 1273.5,
+    "mean_seconds": 0.0,
+    "gap_to_ortools_pct": 1260.5,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "method": "Greedy nearest",
+    "instances": 3,
+    "mean_km": 328.7,
+    "gap_to_best_pct": 29.9,
+    "mean_seconds": 0.01,
+    "gap_to_ortools_pct": 28.7,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "method": "Sweep",
+    "instances": 3,
+    "mean_km": 395.9,
+    "gap_to_best_pct": 56.9,
+    "mean_seconds": 0.001,
+    "gap_to_ortools_pct": 55.4,
+    "beats_ortools": 0
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "method": "This system",
+    "instances": 3,
+    "mean_km": 259.6,
+    "gap_to_best_pct": 2.7,
+    "mean_seconds": 0.611,
+    "gap_to_ortools_pct": 1.8,
+    "beats_ortools": 2
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "method": "OR-Tools (reference)",
+    "instances": 3,
+    "mean_km": 255.3,
+    "gap_to_best_pct": 0.9,
+    "mean_seconds": 30.002,
+    "gap_to_ortools_pct": 0.0,
+    "beats_ortools": 0
+   }
+  ],
+  "rows": [
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 0,
+    "method": "Manual (round-robin)",
+    "km": 241.681,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 0,
+    "method": "Greedy nearest",
+    "km": 94.982,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 0,
+    "method": "Sweep",
+    "km": 100.381,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 0,
+    "method": "This system",
+    "km": 72.177,
+    "seconds": 0.0042
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 0,
+    "method": "OR-Tools (reference)",
+    "km": 72.177,
+    "seconds": 5.0598
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 1,
+    "method": "Manual (round-robin)",
+    "km": 201.931,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 1,
+    "method": "Greedy nearest",
+    "km": 124.728,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 1,
+    "method": "Sweep",
+    "km": 87.67,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 1,
+    "method": "This system",
+    "km": 82.316,
+    "seconds": 0.0031
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 1,
+    "method": "OR-Tools (reference)",
+    "km": 81.194,
+    "seconds": 5.0014
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 2,
+    "method": "Manual (round-robin)",
+    "km": 280.101,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 2,
+    "method": "Greedy nearest",
+    "km": 94.686,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 2,
+    "method": "Sweep",
+    "km": 88.261,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 2,
+    "method": "This system",
+    "km": 77.664,
+    "seconds": 0.0038
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 2,
+    "method": "OR-Tools (reference)",
+    "km": 77.126,
+    "seconds": 5.0016
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 3,
+    "method": "Manual (round-robin)",
+    "km": 286.665,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 3,
+    "method": "Greedy nearest",
+    "km": 91.682,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 3,
+    "method": "Sweep",
+    "km": 87.836,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 3,
+    "method": "This system",
+    "km": 78.117,
+    "seconds": 0.0032
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 3,
+    "method": "OR-Tools (reference)",
+    "km": 74.353,
+    "seconds": 5.0015
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 4,
+    "method": "Manual (round-robin)",
+    "km": 231.153,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 4,
+    "method": "Greedy nearest",
+    "km": 78.237,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 4,
+    "method": "Sweep",
+    "km": 87.036,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 4,
+    "method": "This system",
+    "km": 58.944,
+    "seconds": 0.0031
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 4,
+    "method": "OR-Tools (reference)",
+    "km": 58.944,
+    "seconds": 5.0009
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 5,
+    "method": "Manual (round-robin)",
+    "km": 229.081,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 5,
+    "method": "Greedy nearest",
+    "km": 91.421,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 5,
+    "method": "Sweep",
+    "km": 87.827,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 5,
+    "method": "This system",
+    "km": 80.993,
+    "seconds": 0.0034
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 5,
+    "method": "OR-Tools (reference)",
+    "km": 78.73,
+    "seconds": 5.0016
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 6,
+    "method": "Manual (round-robin)",
+    "km": 222.241,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 6,
+    "method": "Greedy nearest",
+    "km": 78.746,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 6,
+    "method": "Sweep",
+    "km": 91.107,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 6,
+    "method": "This system",
+    "km": 73.561,
+    "seconds": 0.0032
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 6,
+    "method": "OR-Tools (reference)",
+    "km": 72.413,
+    "seconds": 5.0018
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 7,
+    "method": "Manual (round-robin)",
+    "km": 331.544,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 7,
+    "method": "Greedy nearest",
+    "km": 95.188,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 7,
+    "method": "Sweep",
+    "km": 109.871,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 7,
+    "method": "This system",
+    "km": 83.233,
+    "seconds": 0.0029
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 7,
+    "method": "OR-Tools (reference)",
+    "km": 83.195,
+    "seconds": 5.0016
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 8,
+    "method": "Manual (round-robin)",
+    "km": 409.429,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 8,
+    "method": "Greedy nearest",
+    "km": 104.116,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 8,
+    "method": "Sweep",
+    "km": 118.491,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 8,
+    "method": "This system",
+    "km": 76.488,
+    "seconds": 0.0034
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 8,
+    "method": "OR-Tools (reference)",
+    "km": 76.488,
+    "seconds": 5.0015
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 9,
+    "method": "Manual (round-robin)",
+    "km": 283.777,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 9,
+    "method": "Greedy nearest",
+    "km": 89.425,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 9,
+    "method": "Sweep",
+    "km": 93.213,
+    "seconds": 0.0
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 9,
+    "method": "This system",
+    "km": 76.075,
+    "seconds": 0.0027
+   },
+   {
+    "sites": 20,
+    "vehicles": 3,
+    "seed": 9,
+    "method": "OR-Tools (reference)",
+    "km": 74.484,
+    "seconds": 5.0013
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 0,
+    "method": "Manual (round-robin)",
+    "km": 756.79,
+    "seconds": 0.0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 0,
+    "method": "Greedy nearest",
+    "km": 196.526,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 0,
+    "method": "Sweep",
+    "km": 171.637,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 0,
+    "method": "This system",
+    "km": 139.322,
+    "seconds": 0.0199
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 0,
+    "method": "OR-Tools (reference)",
+    "km": 131.706,
+    "seconds": 10.0008
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 1,
+    "method": "Manual (round-robin)",
+    "km": 725.698,
+    "seconds": 0.0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 1,
+    "method": "Greedy nearest",
+    "km": 185.937,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 1,
+    "method": "Sweep",
+    "km": 137.042,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 1,
+    "method": "This system",
+    "km": 127.387,
+    "seconds": 0.0219
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 1,
+    "method": "OR-Tools (reference)",
+    "km": 120.152,
+    "seconds": 10.0009
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 2,
+    "method": "Manual (round-robin)",
+    "km": 815.051,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 2,
+    "method": "Greedy nearest",
+    "km": 148.156,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 2,
+    "method": "Sweep",
+    "km": 159.119,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 2,
+    "method": "This system",
+    "km": 138.534,
+    "seconds": 0.0216
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 2,
+    "method": "OR-Tools (reference)",
+    "km": 131.988,
+    "seconds": 10.0011
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 3,
+    "method": "Manual (round-robin)",
+    "km": 836.2,
+    "seconds": 0.0
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 3,
+    "method": "Greedy nearest",
+    "km": 155.479,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 3,
+    "method": "Sweep",
+    "km": 159.168,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 3,
+    "method": "This system",
+    "km": 132.045,
+    "seconds": 0.0245
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 3,
+    "method": "OR-Tools (reference)",
+    "km": 130.018,
+    "seconds": 10.001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 4,
+    "method": "Manual (round-robin)",
+    "km": 913.8,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 4,
+    "method": "Greedy nearest",
+    "km": 166.965,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 4,
+    "method": "Sweep",
+    "km": 160.643,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 4,
+    "method": "This system",
+    "km": 129.882,
+    "seconds": 0.0411
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 4,
+    "method": "OR-Tools (reference)",
+    "km": 128.207,
+    "seconds": 10.0016
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 5,
+    "method": "Manual (round-robin)",
+    "km": 816.04,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 5,
+    "method": "Greedy nearest",
+    "km": 167.994,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 5,
+    "method": "Sweep",
+    "km": 145.194,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 5,
+    "method": "This system",
+    "km": 125.375,
+    "seconds": 0.0174
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 5,
+    "method": "OR-Tools (reference)",
+    "km": 126.642,
+    "seconds": 10.0012
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 6,
+    "method": "Manual (round-robin)",
+    "km": 821.349,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 6,
+    "method": "Greedy nearest",
+    "km": 164.585,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 6,
+    "method": "Sweep",
+    "km": 159.132,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 6,
+    "method": "This system",
+    "km": 135.447,
+    "seconds": 0.0245
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 6,
+    "method": "OR-Tools (reference)",
+    "km": 129.96,
+    "seconds": 10.0011
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 7,
+    "method": "Manual (round-robin)",
+    "km": 695.336,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 7,
+    "method": "Greedy nearest",
+    "km": 130.977,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 7,
+    "method": "Sweep",
+    "km": 151.873,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 7,
+    "method": "This system",
+    "km": 119.798,
+    "seconds": 0.0255
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 7,
+    "method": "OR-Tools (reference)",
+    "km": 115.49,
+    "seconds": 10.0014
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 8,
+    "method": "Manual (round-robin)",
+    "km": 851.972,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 8,
+    "method": "Greedy nearest",
+    "km": 155.927,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 8,
+    "method": "Sweep",
+    "km": 164.064,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 8,
+    "method": "This system",
+    "km": 126.09,
+    "seconds": 0.0199
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 8,
+    "method": "OR-Tools (reference)",
+    "km": 124.06,
+    "seconds": 10.0019
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 9,
+    "method": "Manual (round-robin)",
+    "km": 776.411,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 9,
+    "method": "Greedy nearest",
+    "km": 170.448,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 9,
+    "method": "Sweep",
+    "km": 144.631,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 9,
+    "method": "This system",
+    "km": 134.0,
+    "seconds": 0.0172
+   },
+   {
+    "sites": 50,
+    "vehicles": 5,
+    "seed": 9,
+    "method": "OR-Tools (reference)",
+    "km": 128.822,
+    "seconds": 10.0008
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 0,
+    "method": "Manual (round-robin)",
+    "km": 1707.759,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 0,
+    "method": "Greedy nearest",
+    "km": 206.365,
+    "seconds": 0.0013
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 0,
+    "method": "Sweep",
+    "km": 274.157,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 0,
+    "method": "This system",
+    "km": 201.143,
+    "seconds": 0.1098
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 0,
+    "method": "OR-Tools (reference)",
+    "km": 182.471,
+    "seconds": 20.0022
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 1,
+    "method": "Manual (round-robin)",
+    "km": 1723.933,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 1,
+    "method": "Greedy nearest",
+    "km": 228.991,
+    "seconds": 0.0013
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 1,
+    "method": "Sweep",
+    "km": 251.803,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 1,
+    "method": "This system",
+    "km": 187.475,
+    "seconds": 0.1308
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 1,
+    "method": "OR-Tools (reference)",
+    "km": 176.604,
+    "seconds": 20.0016
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 2,
+    "method": "Manual (round-robin)",
+    "km": 1920.761,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 2,
+    "method": "Greedy nearest",
+    "km": 221.498,
+    "seconds": 0.0014
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 2,
+    "method": "Sweep",
+    "km": 264.501,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 2,
+    "method": "This system",
+    "km": 185.551,
+    "seconds": 0.0979
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 2,
+    "method": "OR-Tools (reference)",
+    "km": 172.575,
+    "seconds": 20.0023
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 3,
+    "method": "Manual (round-robin)",
+    "km": 1609.862,
+    "seconds": 0.0002
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 3,
+    "method": "Greedy nearest",
+    "km": 220.743,
+    "seconds": 0.0023
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 3,
+    "method": "Sweep",
+    "km": 229.975,
+    "seconds": 0.0005
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 3,
+    "method": "This system",
+    "km": 180.938,
+    "seconds": 0.1653
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 3,
+    "method": "OR-Tools (reference)",
+    "km": 173.9,
+    "seconds": 20.0016
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 4,
+    "method": "Manual (round-robin)",
+    "km": 1898.433,
+    "seconds": 0.0001
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 4,
+    "method": "Greedy nearest",
+    "km": 245.394,
+    "seconds": 0.0014
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 4,
+    "method": "Sweep",
+    "km": 260.533,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 4,
+    "method": "This system",
+    "km": 170.814,
+    "seconds": 0.1013
+   },
+   {
+    "sites": 100,
+    "vehicles": 10,
+    "seed": 4,
+    "method": "OR-Tools (reference)",
+    "km": 171.817,
+    "seconds": 20.0018
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 0,
+    "method": "Manual (round-robin)",
+    "km": 3590.801,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 0,
+    "method": "Greedy nearest",
+    "km": 320.992,
+    "seconds": 0.0096
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 0,
+    "method": "Sweep",
+    "km": 397.633,
+    "seconds": 0.0006
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 0,
+    "method": "This system",
+    "km": 245.019,
+    "seconds": 0.6787
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 0,
+    "method": "OR-Tools (reference)",
+    "km": 251.466,
+    "seconds": 30.0022
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 1,
+    "method": "Manual (round-robin)",
+    "km": 3433.529,
+    "seconds": 0.0003
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 1,
+    "method": "Greedy nearest",
+    "km": 309.318,
+    "seconds": 0.0109
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 1,
+    "method": "Sweep",
+    "km": 389.778,
+    "seconds": 0.0008
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 1,
+    "method": "This system",
+    "km": 261.377,
+    "seconds": 0.5451
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 1,
+    "method": "OR-Tools (reference)",
+    "km": 241.585,
+    "seconds": 30.0019
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 2,
+    "method": "Manual (round-robin)",
+    "km": 3360.383,
+    "seconds": 0.0004
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 2,
+    "method": "Greedy nearest",
+    "km": 355.82,
+    "seconds": 0.0096
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 2,
+    "method": "Sweep",
+    "km": 400.144,
+    "seconds": 0.0006
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 2,
+    "method": "This system",
+    "km": 272.351,
+    "seconds": 0.6084
+   },
+   {
+    "sites": 200,
+    "vehicles": 20,
+    "seed": 2,
+    "method": "OR-Tools (reference)",
+    "km": 272.72,
+    "seconds": 30.0021
+   }
+  ]
+ },
+ "reroute": {
+  "summary": [
+   {
+    "scenario": "demo night, road model",
+    "trials": 1000,
+    "mean_saved_km": 13.66,
+    "median_saved_km": 11.28,
+    "p90_saved_km": 27.14,
+    "share_with_saving_pct": 100.0,
+    "mean_saving_pct_of_remaining": 25.9
+   },
+   {
+    "scenario": "demo night, real roads",
+    "trials": 1000,
+    "mean_saved_km": 8.51,
+    "median_saved_km": 6.64,
+    "p90_saved_km": 20.03,
+    "share_with_saving_pct": 95.7,
+    "mean_saving_pct_of_remaining": 17.7
+   },
+   {
+    "scenario": "50 random sites, road model",
+    "trials": 1000,
+    "mean_saved_km": 4.68,
+    "median_saved_km": 2.62,
+    "p90_saved_km": 12.36,
+    "share_with_saving_pct": 81.5,
+    "mean_saving_pct_of_remaining": 8.4
+   }
+  ]
+ },
+ "algorithm_runtimes": [
+  {
+   "sites": 10,
+   "algorithm": "dijkstra",
+   "seconds": 0.0001,
+   "agrees": true
+  },
+  {
+   "sites": 10,
+   "algorithm": "bellman_ford",
+   "seconds": 0.0002,
+   "agrees": true
+  },
+  {
+   "sites": 10,
+   "algorithm": "floyd_warshall",
+   "seconds": 0.0001,
+   "agrees": true
+  },
+  {
+   "sites": 25,
+   "algorithm": "dijkstra",
+   "seconds": 0.0004,
+   "agrees": true
+  },
+  {
+   "sites": 25,
+   "algorithm": "bellman_ford",
+   "seconds": 0.0012,
+   "agrees": true
+  },
+  {
+   "sites": 25,
+   "algorithm": "floyd_warshall",
+   "seconds": 0.0006,
+   "agrees": true
+  },
+  {
+   "sites": 50,
+   "algorithm": "dijkstra",
+   "seconds": 0.0014,
+   "agrees": true
+  },
+  {
+   "sites": 50,
+   "algorithm": "bellman_ford",
+   "seconds": 0.0061,
+   "agrees": true
+  },
+  {
+   "sites": 50,
+   "algorithm": "floyd_warshall",
+   "seconds": 0.0076,
+   "agrees": true
+  },
+  {
+   "sites": 100,
+   "algorithm": "dijkstra",
+   "seconds": 0.0063,
+   "agrees": true
+  },
+  {
+   "sites": 100,
+   "algorithm": "bellman_ford",
+   "seconds": 0.0319,
+   "agrees": true
+  },
+  {
+   "sites": 100,
+   "algorithm": "floyd_warshall",
+   "seconds": 0.0181,
+   "agrees": true
+  },
+  {
+   "sites": 200,
+   "algorithm": "dijkstra",
+   "seconds": 0.0389,
+   "agrees": true
+  },
+  {
+   "sites": 200,
+   "algorithm": "bellman_ford",
+   "seconds": 0.2357,
+   "agrees": true
+  },
+  {
+   "sites": 200,
+   "algorithm": "floyd_warshall",
+   "seconds": 0.0986,
+   "agrees": true
+  }
+ ],
+ "scalability": [
+  {
+   "sites": 50,
+   "fleet": "5 vehicles",
+   "vehicles": 5,
+   "seconds": 0.018,
+   "km": 127.6
+  },
+  {
+   "sites": 50,
+   "fleet": "~10 sites per vehicle",
+   "vehicles": 5,
+   "seconds": 0.018,
+   "km": 127.6
+  },
+  {
+   "sites": 100,
+   "fleet": "5 vehicles",
+   "vehicles": 5,
+   "seconds": 0.088,
+   "km": 205.3
+  },
+  {
+   "sites": 100,
+   "fleet": "~10 sites per vehicle",
+   "vehicles": 10,
+   "seconds": 0.078,
+   "km": 186.0
+  },
+  {
+   "sites": 200,
+   "fleet": "5 vehicles",
+   "vehicles": 5,
+   "seconds": 0.364,
+   "km": 305.2
+  },
+  {
+   "sites": 200,
+   "fleet": "~10 sites per vehicle",
+   "vehicles": 20,
+   "seconds": 0.623,
+   "km": 259.8
+  },
+  {
+   "sites": 300,
+   "fleet": "5 vehicles",
+   "vehicles": 5,
+   "seconds": 1.059,
+   "km": 384.7
+  },
+  {
+   "sites": 300,
+   "fleet": "~10 sites per vehicle",
+   "vehicles": 30,
+   "seconds": 1.558,
+   "km": 328.4
+  },
+  {
+   "sites": 500,
+   "fleet": "5 vehicles",
+   "vehicles": 5,
+   "seconds": 4.626,
+   "km": 488.3
+  },
+  {
+   "sites": 500,
+   "fleet": "~10 sites per vehicle",
+   "vehicles": 50,
+   "seconds": 5.088,
+   "km": 417.6
+  }
+ ],
+ "road_model_accuracy": [
+  {
+   "instance": "demo_20",
+   "sites": 20,
+   "pairs": 190,
+   "real_over_straight_median": 1.365,
+   "real_over_straight_iqr": [
+    1.274,
+    1.483
+   ],
+   "mape_straight_line_pct": 29.5,
+   "mape_straight_x_circuity_pct": 11.6,
+   "mape_road_model_pct": 11.8,
+   "correlation_road_model": 0.987
+  },
+  {
+   "instance": "random_100",
+   "sites": 100,
+   "pairs": 4949,
+   "real_over_straight_median": 1.447,
+   "real_over_straight_iqr": [
+    1.327,
+    1.616
+   ],
+   "mape_straight_line_pct": 32.6,
+   "mape_straight_x_circuity_pct": 14.0,
+   "mape_road_model_pct": 15.0,
+   "correlation_road_model": 0.96
+  }
+ ],
+ "demo_night_real_roads": {
+  "vehicles": 4,
+  "manual_km_real": 228.0,
+  "planned_on_model_km_real": 117.8,
+  "planned_on_real_km_real": 109.9,
+  "planned_on_model_km_model": 102.2,
+  "manual_km_model": 232.2
+ }
+}

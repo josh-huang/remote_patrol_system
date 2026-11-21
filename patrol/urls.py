@@ -1,6 +1,8 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    MobileRouteView,
     PatrolPlanViewSet,
     PatrolRecordViewSet,
     PatrolStopViewSet,
@@ -13,4 +15,6 @@ router.register("stops", PatrolStopViewSet, basename="stop")
 router.register("records", PatrolRecordViewSet, basename="record")
 router.register("pings", VehiclePingViewSet, basename="ping")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("mobile/route/", MobileRouteView.as_view(), name="mobile-route"),
+] + router.urls

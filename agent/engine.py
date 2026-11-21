@@ -121,22 +121,47 @@ def _run_mock(user_text: str) -> tuple[str, list, list]:
     def has(*kw):
         return any(k in text for k in kw)
 
+    def propose(name, args):
+        summary = tools.summarize(name, args)
+        write_calls.append({"tool_name": name, "arguments": args, "summary": summary})
+        steps.append({"tool": name, "kind": "write", "arguments": args, "status": "queued"})
+
+    # Emergencies → dispatch nearest vehicle with dynamic re-routing.
+    if has("紧急", "警报", "emergency", "alert", "alarm", "reroute", "re-route", "重新规划", "派车", "dispatch"):
+        alerts = use("list_alerts").get("alerts", [])
+        active = [a for a in alerts if a["status"] == "active"]
+        if active:
+            for a in active:
+                propose("dispatch_emergency", {"alert_id": a["id"]})
+            names = ", ".join(a["location_name"] for a in active)
+            return (
+                f"{len(active)} active emergency alert(s): {names}. I've prepared a dispatch "
+                f"of the nearest operational vehicle for each; its remaining route will be "
+                f"re-planned from the emergency site instead of driving back. Confirm below.",
+                steps,
+                write_calls,
+            )
+        if alerts:
+            lines = [
+                f"- #{a['id']} {a['location_name']}: {a['vehicle'] or '—'} dispatched, "
+                f"saved {a['saved_km']} km / {a['saved_kg']} kg CO2e"
+                for a in alerts
+            ]
+            return "All alerts are already dispatched:\n" + "\n".join(lines), steps, write_calls
+        return "There are no open emergency alerts right now.", steps, write_calls
+
     # Route / plan → propose a write action (queued for confirmation).
-    if has("规划", "路线", "route", "plan", "派车", "dispatch", "调度"):
+    if has("规划", "路线", "route", "plan", "调度"):
         vehicles = use("list_vehicles", {"available_only": True}).get("vehicles", [])
-        vids = [v["id"] for v in vehicles]
-        if vids:
-            args = {"name": "AI-planned patrol", "vehicle_ids": vids}
-            summary = tools.summarize("create_patrol_plan", args)
-            write_calls.append({"tool_name": "create_patrol_plan", "arguments": args, "summary": summary})
-            steps.append({"tool": "create_patrol_plan", "kind": "write", "arguments": args, "status": "queued"})
+        if vehicles:
+            propose("create_patrol_plan", {"name": "AI-planned patrol"})
             answer = (
-                f"I found {len(vids)} available vehicle(s). I've prepared a plan that "
-                f"auto-routes them across all active locations (priority-first). "
-                f"Confirm the action below to create and dispatch it."
+                f"I found {len(vehicles)} operational vehicle(s). I've prepared a plan that "
+                f"auto-routes them across all active locations (priority-first, shortest "
+                f"distance). Confirm the action below to create and dispatch it."
             )
         else:
-            answer = "No available vehicles right now, so I can't propose a route."
+            answer = "No operational vehicles right now, so I can't propose a route."
         return answer, steps, write_calls
 
     # Incidents / anomalies
@@ -178,8 +203,9 @@ def _run_mock(user_text: str) -> tuple[str, list, list]:
     # Default → dashboard overview
     s = use("get_dashboard_summary")
     return (
-        f"Command overview: {s['vehicles_available']}/{s['vehicles_total']} vehicles "
-        f"available, {s['active_locations']} active locations, {s['open_incidents']} "
+        f"Command overview: {s['vehicles_operational']}/{s['vehicles_total']} vehicles "
+        f"operational, {s['active_locations']} active locations, {s['active_alerts']} "
+        f"active emergency alert(s), {s['open_incidents']} "
         f"open incident(s) ({s['critical_incidents']} critical), "
         f"{s['total_emission_kg']} kg CO2e total. Ask me to plan a route, review "
         f"incidents, or generate a report.",

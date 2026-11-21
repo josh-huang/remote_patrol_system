@@ -7,6 +7,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  MenuItem,
   TextField,
   Typography,
   useTheme,
@@ -16,6 +17,8 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import Header from "../../components/Header";
 import { tokens } from "../../theme";
 import api from "../../api/client";
+import { fetchList } from "../../api/resources";
+import StatusChip from "../../components/StatusChip";
 
 const SEVERITY_COLOR = {
   low: "info",
@@ -30,27 +33,36 @@ const Incidents = () => {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState("");
+  const [location, setLocation] = useState("");
+  const [sites, setSites] = useState([]);
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
 
-  const load = () =>
-    api.get("/incidents/").then((r) => setItems(r.data.results || r.data));
+  const load = () => fetchList("/incidents/", { ordering: "-created_at" }).then(setItems);
 
   useEffect(() => {
     load();
+    fetchList("/locations/").then(setSites);
   }, []);
+
+  const setStatus = async (inc, status) => {
+    await api.patch(`/incidents/${inc.id}/`, { status });
+    load();
+  };
 
   const handleSubmit = async () => {
     setBusy(true);
     try {
       const fd = new FormData();
       fd.append("description", description);
+      if (location) fd.append("location", location);
       files.forEach((f) => fd.append("uploaded_images", f));
       await api.post("/incidents/", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setOpen(false);
       setDescription("");
+      setLocation("");
       setFiles([]);
       load();
     } catch (e) {
@@ -65,7 +77,7 @@ const Incidents = () => {
       <Box display="flex" justifyContent="space-between" alignItems="center">
         <Header
           title="INCIDENTS"
-          subtitle="AI-triaged field reports from patrol officers"
+          subtitle="AI-triaged field reports submitted from the duty phones"
         />
         <Button
           variant="contained"
@@ -101,8 +113,10 @@ const Incidents = () => {
                 size="small"
                 variant="outlined"
               />
+              <StatusChip value={inc.status} variant="outlined" />
               <Typography variant="caption" color={colors.grey[300]} ml="auto">
-                {inc.location_name || "Unknown location"} ·{" "}
+                {inc.location_name || "Unknown location"}
+                {inc.vehicle_plate ? ` · ${inc.vehicle_plate}` : ""} ·{" "}
                 {new Date(inc.created_at).toLocaleString()}
               </Typography>
             </Box>
@@ -124,6 +138,27 @@ const Incidents = () => {
                 ))}
               </Box>
             )}
+            {inc.images?.length > 0 && (
+              <Box display="flex" gap={1} mt={1} flexWrap="wrap">
+                {inc.images.map((img) => (
+                  <a key={img.id} href={img.image} target="_blank" rel="noreferrer">
+                    <img src={img.image} alt="incident" style={{ height: 80, borderRadius: 4 }} />
+                  </a>
+                ))}
+              </Box>
+            )}
+            {inc.status !== "resolved" && (
+              <Box display="flex" gap={1} mt={1.5}>
+                {inc.status === "open" && (
+                  <Button size="small" variant="outlined" color="inherit" onClick={() => setStatus(inc, "acknowledged")}>
+                    Acknowledge
+                  </Button>
+                )}
+                <Button size="small" variant="outlined" color="success" onClick={() => setStatus(inc, "resolved")}>
+                  Resolve
+                </Button>
+              </Box>
+            )}
           </Box>
         ))}
       </Box>
@@ -139,6 +174,14 @@ const Incidents = () => {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe what you observed…"
           />
+          <TextField select label="Site" value={location} onChange={(e) => setLocation(e.target.value)}>
+            <MenuItem value="">— unknown —</MenuItem>
+            {sites.map((l) => (
+              <MenuItem key={l.id} value={l.id}>
+                {l.name}
+              </MenuItem>
+            ))}
+          </TextField>
           <Button variant="outlined" component="label">
             Attach Photos ({files.length})
             <input
@@ -151,7 +194,8 @@ const Incidents = () => {
           </Button>
           <Typography variant="caption" color={colors.grey[300]}>
             On submit, the AI analyst classifies the report and assigns a
-            severity automatically.
+            severity. High/critical incidents at a site raise an emergency
+            alert and the agent proposes a dispatch.
           </Typography>
         </DialogContent>
         <DialogActions>

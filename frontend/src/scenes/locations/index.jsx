@@ -1,147 +1,125 @@
 import { useEffect, useState } from "react";
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  Switch,
-  TextField,
-  useTheme,
-} from "@mui/material";
+import { Box, Button, Chip, IconButton, Tooltip } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import { DataGrid } from "@mui/x-data-grid";
+import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import Header from "../../components/Header";
-import { tokens } from "../../theme";
+import DataTable from "../../components/DataTable";
+import FormDialog from "../../components/FormDialog";
+import RowActions from "../../components/RowActions";
+import RouteMap from "../../components/RouteMap";
+import Panel from "../../components/Panel";
 import api from "../../api/client";
+import { errorMessage, fetchList } from "../../api/resources";
 
-const emptyForm = {
-  name: "",
-  address: "",
-  latitude: "",
-  longitude: "",
-  priority: 1,
-  emergency_trigger: false,
-};
+const PRIORITIES = [
+  { value: 1, label: "1 — normal" },
+  { value: 2, label: "2 — elevated" },
+  { value: 3, label: "3 — high" },
+  { value: 4, label: "4 — very high" },
+  { value: 5, label: "5 — critical" },
+];
+
+const FIELDS = [
+  { name: "name", label: "Site name", required: true },
+  { name: "address", label: "Address" },
+  { name: "latitude", label: "Latitude", type: "number", required: true },
+  { name: "longitude", label: "Longitude", type: "number", required: true },
+  { name: "priority", label: "Priority", type: "select", options: PRIORITIES, helperText: "Higher priority sites are visited first." },
+  { name: "contact_number", label: "Site contact number" },
+  { name: "is_active", label: "Active (include in patrols)", type: "checkbox" },
+];
+
+const EMPTY = { priority: 1, is_active: true, latitude: 1.3521, longitude: 103.8198 };
 
 const Locations = () => {
-  const theme = useTheme();
-  const colors = tokens(theme.palette.mode);
   const [rows, setRows] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [editing, setEditing] = useState(null);
 
-  const load = () =>
-    api.get("/locations/").then((res) => setRows(res.data.results || res.data));
-
+  const load = () => fetchList("/locations/").then(setRows);
   useEffect(() => {
     load();
   }, []);
 
-  const handleCreate = async () => {
-    await api.post("/locations/", {
-      ...form,
-      latitude: parseFloat(form.latitude),
-      longitude: parseFloat(form.longitude),
-      priority: parseInt(form.priority, 10),
-    });
-    setOpen(false);
-    setForm(emptyForm);
+  const save = async (form) => {
+    const { image, active_alerts, emergency_trigger, created_at, ...body } = form;
+    if (form.id) await api.patch(`/locations/${form.id}/`, body);
+    else await api.post("/locations/", body);
     load();
   };
 
+  const remove = async (row) => {
+    if (!window.confirm(`Remove site ${row.name}?`)) return;
+    await api.delete(`/locations/${row.id}/`);
+    load();
+  };
+
+  const trigger = async (row) => {
+    const description = window.prompt(`Raise an emergency alert at ${row.name}? Describe the alarm:`, "Alarm triggered");
+    if (description === null) return;
+    try {
+      await api.post(`/locations/${row.id}/trigger_emergency/`, { description });
+      load();
+    } catch (e) {
+      window.alert(errorMessage(e));
+    }
+  };
+
   const columns = [
-    { field: "name", headerName: "Name", flex: 1.2 },
-    { field: "address", headerName: "Address", flex: 1.5 },
-    { field: "priority", headerName: "Priority", flex: 0.6 },
+    { field: "name", headerName: "Site", flex: 1.3 },
+    { field: "address", headerName: "Address", flex: 1.3 },
+    { field: "priority", headerName: "Priority", flex: 0.5 },
     {
       field: "emergency_trigger",
       headerName: "Emergency",
-      flex: 0.8,
-      renderCell: (p) => (p.value ? "⚠ Yes" : "No"),
+      flex: 0.7,
+      renderCell: ({ value }) => (value ? <Chip size="small" color="error" label="ACTIVE" /> : "—"),
     },
-    { field: "latitude", headerName: "Lat", flex: 0.8 },
-    { field: "longitude", headerName: "Lng", flex: 0.8 },
+    { field: "is_active", headerName: "Active", flex: 0.5, renderCell: ({ value }) => (value ? "Yes" : "No") },
+    {
+      field: "coords",
+      headerName: "Coordinates",
+      flex: 1,
+      valueGetter: ({ row }) => `${row.latitude.toFixed(4)}, ${row.longitude.toFixed(4)}`,
+    },
+    {
+      field: "actions",
+      headerName: "",
+      sortable: false,
+      width: 140,
+      renderCell: ({ row }) => (
+        <RowActions onEdit={() => setEditing(row)} onDelete={() => remove(row)}>
+          <Tooltip title="Trigger emergency alarm">
+            <IconButton size="small" color="error" onClick={() => trigger(row)}>
+              <CampaignOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </RowActions>
+      ),
+    },
   ];
 
   return (
     <Box m="20px">
       <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Header title="LOCATIONS" subtitle="Patrol checkpoints & priorities" />
-        <Button
-          variant="contained"
-          color="secondary"
-          startIcon={<AddIcon />}
-          onClick={() => setOpen(true)}
-        >
-          Add Location
+        <Header title="LOCATIONS" subtitle="Patrol sites, their priority and emergency status" />
+        <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={() => setEditing(EMPTY)}>
+          Add site
         </Button>
       </Box>
-      <Box
-        height="70vh"
-        sx={{
-          "& .MuiDataGrid-root": { border: "none" },
-          "& .MuiDataGrid-columnHeaders": {
-            backgroundColor: colors.blueAccent[700],
-          },
-          "& .MuiDataGrid-footerContainer": {
-            backgroundColor: colors.blueAccent[700],
-          },
-        }}
-      >
-        <DataGrid rows={rows} columns={columns} getRowId={(r) => r.id} />
+      <Box display="grid" gridTemplateColumns={{ xs: "1fr", xl: "3fr 2fr" }} gap="16px">
+        <DataTable rows={rows} columns={columns} />
+        <Panel title="Site map">
+          <RouteMap sites={rows.filter((r) => r.is_active)} height={520} />
+        </Panel>
       </Box>
-
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add Location</DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-          <TextField
-            label="Name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-          <TextField
-            label="Address"
-            value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-          />
-          <TextField
-            label="Latitude"
-            value={form.latitude}
-            onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-          />
-          <TextField
-            label="Longitude"
-            value={form.longitude}
-            onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-          />
-          <TextField
-            label="Priority (higher = earlier)"
-            type="number"
-            value={form.priority}
-            onChange={(e) => setForm({ ...form, priority: e.target.value })}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={form.emergency_trigger}
-                onChange={(e) =>
-                  setForm({ ...form, emergency_trigger: e.target.checked })
-                }
-              />
-            }
-            label="Emergency trigger (force to front of route)"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate} variant="contained" color="secondary">
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <FormDialog
+        open={Boolean(editing)}
+        title={editing?.id ? `Edit ${editing.name}` : "Add site"}
+        fields={FIELDS}
+        initial={editing}
+        onClose={() => setEditing(null)}
+        onSubmit={save}
+      />
     </Box>
   );
 };

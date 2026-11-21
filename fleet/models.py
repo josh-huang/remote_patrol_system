@@ -15,7 +15,11 @@ class Location(TimeStampedModel):
     priority = models.PositiveSmallIntegerField(
         default=1, help_text="Higher = visited earlier in a patrol plan."
     )
-    emergency_trigger = models.BooleanField(default=False)
+    emergency_trigger = models.BooleanField(
+        default=False,
+        help_text="Set while an emergency alarm at this site is active.",
+    )
+    contact_number = models.CharField(max_length=32, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -39,6 +43,7 @@ class Vehicle(TimeStampedModel):
         OUT_OF_SERVICE = "out_of_service", "Out of Service"
 
     plate_number = models.CharField(max_length=16, unique=True)
+    model_name = models.CharField(max_length=64, blank=True)
     contact_number = models.CharField(max_length=32, blank=True)
     engine_type = models.CharField(
         max_length=16, choices=EngineType.choices, default=EngineType.PETROL
@@ -54,6 +59,10 @@ class Vehicle(TimeStampedModel):
     # Last known real-time position (updated by VehiclePing).
     current_latitude = models.FloatField(null=True, blank=True)
     current_longitude = models.FloatField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    # Vehicles in these maintenance states cannot be scheduled for patrol.
+    UNSCHEDULABLE = (MaintenanceStatus.IN_SERVICE, MaintenanceStatus.OUT_OF_SERVICE)
 
     class Meta:
         ordering = ["plate_number"]
@@ -62,5 +71,16 @@ class Vehicle(TimeStampedModel):
         return self.plate_number
 
     @property
+    def is_operational(self) -> bool:
+        """Available for patrol: switched on and healthy enough to drive."""
+        return self.is_available and self.maintenance_status not in self.UNSCHEDULABLE
+
+    @property
     def driver_in_charge(self):
-        return self.assigned_guards.filter(is_driver=True).first()
+        return self.assigned_guards.filter(is_driver=True).select_related("user").first()
+
+    @classmethod
+    def operational(cls):
+        return cls.objects.filter(is_available=True).exclude(
+            maintenance_status__in=cls.UNSCHEDULABLE
+        )

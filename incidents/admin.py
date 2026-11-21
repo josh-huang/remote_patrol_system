@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import IncidentImage, IncidentReport
+from .models import EmergencyAlert, IncidentImage, IncidentReport
 
 
 class IncidentImageInline(admin.TabularInline):
@@ -21,3 +21,9 @@ class IncidentReportAdmin(admin.ModelAdmin):
     list_filter = ["status", "ai_severity", "ai_category", "ai_anomaly_detected"]
     search_fields = ["description", "ai_summary"]
     inlines = [IncidentImageInline]
+
+
+@admin.register(EmergencyAlert)
+class EmergencyAlertAdmin(admin.ModelAdmin):
+    list_display = ["id", "location", "status", "source", "assigned_vehicle", "saved_km", "created_at"]
+    list_filter = ["status", "source"]

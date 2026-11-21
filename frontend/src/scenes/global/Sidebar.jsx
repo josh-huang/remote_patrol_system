@@ -1,41 +1,65 @@
 import { useState } from "react";
 import { ProSidebar, Menu, MenuItem } from "react-pro-sidebar";
 import { Box, IconButton, Typography, useTheme } from "@mui/material";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import "react-pro-sidebar/dist/css/styles.css";
 import { tokens } from "../../theme";
+import { useAuth } from "../../context/AuthContext";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import LocalShippingOutlinedIcon from "@mui/icons-material/LocalShippingOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
 import RouteOutlinedIcon from "@mui/icons-material/RouteOutlined";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
+import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
+import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
+import ChatOutlinedIcon from "@mui/icons-material/ChatOutlined";
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
 import MenuOutlinedIcon from "@mui/icons-material/MenuOutlined";
 import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 
-const Item = ({ title, to, icon, selected, setSelected }) => {
-  const theme = useTheme();
-  const colors = tokens(theme.palette.mode);
-  return (
-    <MenuItem
-      active={selected === title}
-      style={{ color: colors.grey[100] }}
-      onClick={() => setSelected(title)}
-      icon={icon}
-    >
-      <Typography>{title}</Typography>
-      <Link to={to} />
-    </MenuItem>
-  );
-};
+const SECTIONS = [
+  {
+    items: [
+      { title: "Dashboard", to: "/", icon: <HomeOutlinedIcon /> },
+      { title: "AI Assistant", to: "/assistant", icon: <AutoAwesomeOutlinedIcon /> },
+    ],
+  },
+  {
+    heading: "Operations",
+    items: [
+      { title: "Live Map", to: "/live-map", icon: <MapOutlinedIcon /> },
+      { title: "Route Planning", to: "/route-planning", icon: <RouteOutlinedIcon /> },
+      { title: "Emergency Alerts", to: "/alerts", icon: <CampaignOutlinedIcon /> },
+      { title: "Incidents", to: "/incidents", icon: <ReportProblemOutlinedIcon /> },
+      { title: "Messages", to: "/messages", icon: <ChatOutlinedIcon /> },
+    ],
+  },
+  {
+    heading: "Fleet",
+    items: [
+      { title: "Vehicles", to: "/vehicles", icon: <LocalShippingOutlinedIcon /> },
+      { title: "Locations", to: "/locations", icon: <PlaceOutlinedIcon /> },
+      { title: "Guards", to: "/guards", icon: <BadgeOutlinedIcon /> },
+    ],
+  },
+  {
+    heading: "Analytics",
+    items: [
+      { title: "Patrol Records", to: "/records", icon: <HistoryOutlinedIcon /> },
+      { title: "Reports", to: "/reports", icon: <AssessmentOutlinedIcon /> },
+    ],
+  },
+];
 
 const Sidebar = () => {
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
+  const { user } = useAuth();
+  const { pathname } = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [selected, setSelected] = useState("Dashboard");
 
   return (
     <Box
@@ -55,12 +79,7 @@ const Sidebar = () => {
             style={{ margin: "10px 0 20px 0", color: colors.grey[100] }}
           >
             {!isCollapsed && (
-              <Box
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                ml="15px"
-              >
+              <Box display="flex" justifyContent="space-between" alignItems="center" ml="15px">
                 <Box display="flex" alignItems="center" gap="8px">
                   <ShieldOutlinedIcon />
                   <Typography variant="h4" color={colors.grey[100]}>
@@ -74,137 +93,38 @@ const Sidebar = () => {
             )}
           </MenuItem>
 
-<<<<<<< HEAD
-=======
-          {!isCollapsed && (
-            <Box mb="25px">
-              <Box display="flex" justifyContent="center" alignItems="center">
-                <img
-                  alt="profile-user"
-                  width="100px"
-                  height="100px"
-                  src={`../../assets/user.png`}
-                  style={{ cursor: "pointer", borderRadius: "50%" }}
-                />
-              </Box>
-              <Box textAlign="center">
-                <Typography
-                  variant="h2"
-                  color={colors.grey[100]}
-                  fontWeight="bold"
-                  sx={{ m: "10px 0 0 0" }}
-                >
-                  Joshua
-                </Typography>
-                <Typography variant="h5" color={colors.greenAccent[500]}>
-                  Control Centre Admin
-                </Typography>
-              </Box>
+          {!isCollapsed && user && (
+            <Box mb="20px" textAlign="center">
+              <Typography variant="h4" color={colors.grey[100]} fontWeight="bold">
+                {[user.first_name, user.last_name].filter(Boolean).join(" ") || user.username}
+              </Typography>
+              <Typography variant="h6" color={colors.greenAccent[500]}>
+                Command centre admin
+              </Typography>
             </Box>
           )}
 
->>>>>>> 02b7eceb7089738a0269c6f33ad9366e175cbf09
-          <Box paddingLeft={isCollapsed ? undefined : "10%"}>
-            <Item
-              title="Dashboard"
-              to="/"
-              icon={<HomeOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-<<<<<<< HEAD
-              title="AI Assistant"
-              to="/assistant"
-              icon={<AutoAwesomeOutlinedIcon />}
-=======
-              title="Manage Team"
-              to="/team"
-              icon={<PeopleOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            {/* <Item
-              title="Contacts Information"
-              to="/contacts"
-              icon={<ContactsOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Invoices Balances"
-              to="/invoices"
-              icon={<ReceiptOutlinedIcon />}
->>>>>>> 02b7eceb7089738a0269c6f33ad9366e175cbf09
-              selected={selected}
-              setSelected={setSelected}
-            /> */}
-
-            <Typography
-              variant="h6"
-              color={colors.grey[300]}
-              sx={{ m: "15px 0 5px 20px" }}
-            >
-              Fleet
-            </Typography>
-            <Item
-              title="Vehicles"
-              to="/vehicles"
-              icon={<LocalShippingOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Locations"
-              to="/locations"
-              icon={<PlaceOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-
-            <Typography
-              variant="h6"
-              color={colors.grey[300]}
-              sx={{ m: "15px 0 5px 20px" }}
-            >
-              Operations
-            </Typography>
-            <Item
-              title="Route Planning"
-              to="/route-planning"
-              icon={<RouteOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Live Map"
-              to="/live-map"
-              icon={<MapOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Incidents"
-              to="/incidents"
-              icon={<ReportProblemOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-
-            <Typography
-              variant="h6"
-              color={colors.grey[300]}
-              sx={{ m: "15px 0 5px 20px" }}
-            >
-              Analytics
-            </Typography>
-            <Item
-              title="Reports"
-              to="/reports"
-              icon={<AssessmentOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
+          <Box paddingLeft={isCollapsed ? undefined : "6%"}>
+            {SECTIONS.map((section, i) => (
+              <Box key={i}>
+                {section.heading && !isCollapsed && (
+                  <Typography variant="h6" color={colors.grey[300]} sx={{ m: "15px 0 5px 20px" }}>
+                    {section.heading}
+                  </Typography>
+                )}
+                {section.items.map((item) => (
+                  <MenuItem
+                    key={item.to}
+                    active={item.to === "/" ? pathname === "/" : pathname.startsWith(item.to)}
+                    style={{ color: colors.grey[100] }}
+                    icon={item.icon}
+                  >
+                    <Typography>{item.title}</Typography>
+                    <Link to={item.to} />
+                  </MenuItem>
+                ))}
+              </Box>
+            ))}
           </Box>
         </Menu>
       </ProSidebar>

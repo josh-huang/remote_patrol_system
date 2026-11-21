@@ -1,198 +1,304 @@
-# Remote Patrol System
+# Dynamic Patrol Routing System
 
-An enterprise-grade **AI-agent-driven security patrol platform**. A fleet of
-patrol vehicles visits prioritised checkpoints on optimised routes; an
-autonomous **AI agent ("Sentinel")** is the operational brain — it reads live
-system state, plans routes, triages incidents, and proposes dispatch actions,
-all through natural-language command and event-driven autonomy.
+A command-centre platform for night-patrol vehicle fleets. It **plans every
+vehicle's route automatically** each night from the vehicles that are actually
+fit to drive and the sites that must be visited, **re-plans a vehicle's route
+on the fly when it is diverted to an emergency** (so it carries on from the
+emergency site instead of driving back), and **tracks the CO2e saved** by both.
 
-Built as a Django REST backend + React admin dashboard, with a documented API
-contract for a Flutter duty-phone mobile app.
+It has three parts:
 
-## The AI Agent is the core
+| Part | Tech | For |
+|------|------|-----|
+| Backend API (`/`) | Django 4.2, DRF, JWT, MySQL | everything |
+| Command-centre dashboard (`frontend/`) | React 18, MUI, Nivo, Google Maps | admins |
+| Duty-phone app (`mobile/`) | Flutter | the guards in each vehicle |
 
-Instead of AI being one isolated feature, the **agent orchestrates the whole
-system**. Every capability (routing, emissions, fleet/incident queries, plan
-creation) is exposed to the agent as a **tool**, and the agent decides which to
-call and in what order.
+📄 Full write-up: [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) — problem
+statement, solution, algorithms, technology stack and evaluation.
+📊 Evaluation results: [`docs/evaluation/`](docs/evaluation/README.md).
 
-```
-Operator (natural language)  ──►  🧠 Agent "Sentinel"  ──►  tools ──► services/DB
-                                    │  (LLM tool-calling loop)
-Critical incident (event)  ───────►┘  (autonomous trigger)
-```
+## Background: original capstone and this rebuild
 
-- **Copilot mode** — operators chat with the agent ("plan a route for the 3
-  high-priority sites with 2 vehicles and keep emissions low"); it chains tool
-  calls and answers with real figures.
-- **Autonomous mode** — when a high/critical incident is analysed, the agent
-  proactively prepares a dispatch of the nearest available vehicle.
-- **Human-in-the-loop governance** — the agent never executes state-changing
-  actions itself. It queues them as **pending actions** that an operator
-  confirms or rejects, and every tool call + action is stored for audit.
-- **Fully offline-capable** — with no LLM key the agent falls back to a
-  deterministic tool router, so the whole experience stays demoable.
+This project began as my undergraduate capstone, **"Dynamic Patrol Routing
+System"** (CSC3001 Capstone Project, Singapore Institute of Technology –
+University of Glasgow Joint Degree in Computing Science, August 2022 – April
+2023), an industry project with a Singapore security services company. The
+problem definition and design draft from that project are kept in this
+repository (`Capstone_Proposal_Huang_Jiashu_2001792.pdf`,
+`Capstone Draft.docx`).
 
----
+The original source code was lost. **This repository is a 2026 rebuild,
+written with AI assistance (Claude Code)** from those two documents: every
+requirement in them is implemented and traced in the table below. Commits made
+with that assistance carry a `Co-Authored-By: Claude` trailer.
 
-## Architecture
+The rebuild deliberately goes beyond the original scope in a few places, so
+they are not mistaken for 2023 work:
 
-```
-                 ┌───────────────────────┐        ┌──────────────────────┐
-                 │  React Admin Dashboard │        │  Flutter Duty-Phone  │
-                 │   (MUI, Nivo, Maps)    │        │   app (per vehicle)  │
-                 └───────────┬───────────┘        └──────────┬───────────┘
-                             │  JWT / REST (JSON)            │
-                             └───────────────┬───────────────┘
-                                             ▼
-                         ┌───────────────────────────────────────┐
-                         │        Django + DRF API (v1)           │
-                         │  accounts · fleet · patrol · incidents │
-                         │        core.services (business)        │
-                         │  routing │ emissions │ llm (AI)         │
-                         └───────────────────┬───────────────────┘
-                                             ▼
-                                     ┌───────────────┐     ┌──────────────┐
-                                     │  MySQL 8.0    │     │ OpenAI-compat │
-                                     │  (Docker)     │     │  LLM (opt.)   │
-                                     └───────────────┘     └──────────────┘
-```
+- the AI agent ("Sentinel") and LLM incident triage;
+- real driving distances through OSRM, and the evaluation framework that
+  compares the planner with OR-Tools and simpler heuristics
+  ([`evaluation/`](evaluation/run.py));
+- the architecture hardening described under
+  [Architecture decisions](#architecture-decisions) and the CI pipeline.
 
-### Backend apps
-
-| App | Responsibility |
-|-----|----------------|
-| `accounts` | Custom `User` (role: admin/guard) + `SecurityGuard` duty profile, JWT auth |
-| `fleet` | `Vehicle` and `Location` (checkpoint) management |
-| `patrol` | `PatrolPlan` / `PatrolStop` / `PatrolRecord` + real-time `VehiclePing` |
-| `incidents` | `IncidentReport` + photos, with **AI analysis** on intake |
-| `agent` | **The AI brain** — tool registry, decision loop, conversations, pending actions, event-driven autonomy |
-| `core` | Shared base model + service layer (routing, emissions, LLM) + dashboards/reports |
-
-### Agent app (`agent/`)
-
-| File | Role |
-|------|------|
-| `tools.py` | Wraps services/ORM as agent tools (READ = auto, WRITE = confirm) |
-| `engine.py` | The tool-calling decision loop + offline deterministic fallback |
-| `autonomy.py` | Event-driven triggers (auto-dispatch on critical incidents) |
-| `prompts.py` | Sentinel's system prompt |
-| `models.py` | `AgentConversation`, `AgentMessage` (with reasoning trace), `AgentAction` (auditable pending actions) |
-
-### Service layer (`core/services/`)
-
-- **`routing.py`** — Dijkstra, Bellman-Ford, Floyd-Warshall shortest paths plus a
-  multi-vehicle, priority-aware patrol planner (haversine-weighted graph).
-- **`emissions.py`** — CO₂e estimation from mileage × engine-type factor, and a
-  shortest-distance vs best-traffic comparison.
-- **`llm.py`** — AI incident classification/severity/summary (text + vision) and
-  narrative report generation. **Degrades to a deterministic mock when no API
-  key is set**, so the whole system runs offline.
+An optional AI agent ("Sentinel") lets operators drive the system in natural
+language and reacts to serious incidents; every state-changing action it
+proposes waits for an operator to confirm.
 
 ---
 
-## Quick start (Docker — recommended)
+## Requirements → implementation
+
+From the capstone problem definition and design draft.
+
+### Objectives
+
+| Requirement | How it is met |
+|---|---|
+| Plan each vehicle's route every day from the sites and **available** vehicles; cover every site; shortest overall distance | `core/services/routing.py → plan_patrol_routes`: capacitated, priority-aware multi-vehicle planner (multi-start local search: cheapest insertion and sweep starts, then 2-opt, relocate, swap and 2-opt* moves; priority tiers). Within 1–7% of OR-Tools on 20–100 sites ([evaluation](docs/evaluation/README.md)). Only *operational* vehicles (available and not `in_service`/`out_of_service`) are planned. Every site is covered exactly once (tested). |
+| No admin planning every night | `python manage.py plan_daily` (schedule with cron) or the one-click **Automatic plan** on the dashboard (`POST /plans/auto_daily/`). |
+| Re-plan the route of a vehicle involved in an emergency, without driving back | `reroute_after_emergency` + `patrol.services.dispatch_alert`: the vehicle goes to the emergency site and the rest of its stops are re-optimised from there. The site is removed from other vehicles' routes. The old practice (drive back to the last site and resume) is costed too, and the saving is stored on the alert and plan. |
+| Vehicles break down / go into maintenance | Unschedulable vehicles are excluded from new plans; **Rebalance** (`POST /plans/{id}/rebalance/`) hands a broken-down vehicle's unvisited sites to the rest of the fleet. |
+| Reduce carbon emission, measured from the mileage difference | `core/services/emissions.py`: CO2e = mileage × engine-type factor (petrol factor derived from the proposal's 8,887 g CO2/gallon). Each plan stores the **manual baseline** (sites handed out round-robin, unoptimised) next to the optimised route; re-routes store their saving. The dashboard and reports show km and kg CO2e saved. |
+| Dashboard: real-time location of each vehicle | **Live Map** and dashboard map (Google Maps, or a schematic SVG map when no key is set), fed by duty-phone GPS pings. |
+| Dashboard: vehicle details (plate, driver in charge, contact, health status, mileage) | **Dashboard → Fleet status** and **Vehicles**: plate, model, driver in charge, contact number, health status, next location, route progress, mileage this patrol and total. |
+| Dashboard: emergency alert noticeboard | **Dashboard** and **Emergency Alerts**: raise, dispatch & re-route, resolve; shows the new route vs the old practice. |
+| Dashboard: estimated carbon footprint | KPI tiles, per-vehicle emission history chart (30 days), carbon-savings panel, reports. |
+| Mobile app: view the route plan and next location | `mobile/` **Route** screen (`GET /mobile/route/`), with Google Maps navigation and emergency re-route alerts. |
+| Mobile app: contact the command centre (message or call) | **Command** screen: message thread (`/messages/`) + call button. Dashboard **Messages** page for the command-centre side. |
+
+### Design draft features
+
+| Draft item | Where |
+|---|---|
+| Add / remove locations and vehicles | **Locations**, **Vehicles** pages (full CRUD); **Guards** page links accounts to vehicles |
+| Manually plan routes | **Route Planning → Manual plan** (`POST /plans/{id}/manual_route/`) |
+| Past patrol records | **Patrol Records** page, with the guards' site photos |
+| Daily or monthly report | **Reports** page (`GET /reports/patrol/?period=daily|monthly`), AI narrative, CSV download |
+| Compare shortest distance vs best traffic | `POST /routing/compare-emissions/` |
+| Graph of past emission per vehicle | Dashboard chart (`GET /dashboard/emissions/`) |
+| Each mobile account linked to one vehicle | `SecurityGuard.assigned_vehicle`; all mobile endpoints scope to it |
+| Submit pictures of the location | **Check in** (`POST /stops/{id}/check_in/` with `images`) → stored centrally as `PatrolRecordImage` (replaces WhatsApp) |
+| Submit incident report | **Incident** screen (`POST /incidents/`), AI-triaged |
+| Central MySQL database (vehicles, locations, daily plans, guard images) | MySQL 8 in Docker (SQLite for quick local runs) |
+| Admin (username, password); Security Guard (name, id, availability, vehicle, on duty, is driver) | `accounts.User` (role admin/guard) + `SecurityGuard` |
+| Vehicle (plate, driver in charge, maintenance status, availability, current route, current location, next location) | `fleet.Vehicle` + serializer fields `driver_name`, `current_plan`, `current_latitude/longitude`, `next_location` |
+| Location (name, image, emergency trigger, priority) | `fleet.Location` |
+| Shortest path: Dijkstra, Bellman-Ford, Floyd-Warshall | `core/services/routing.py`; any of the three builds the planner's distance matrix; **Route Planning → Shortest path** compares them |
+| `shortestRoute(location_list, priority_location, num_car)` | `plan_patrol_routes(nodes, num_vehicles, …)` — priority is carried on each node |
+
+> The draft mentions Firestore for the mobile app; this build uses the same
+> Django API and MySQL database for both clients, which keeps a single source
+> of truth (one of the proposal's goals).
+
+---
+
+## How routing works
+
+1. **Road network.** Sites (plus virtual nodes such as a vehicle's live GPS
+   position) are joined to their 5 nearest neighbours plus a minimum spanning
+   tree, with great-circle distance × 1.3 road-circuity factor as edge weight.
+   Because the graph is sparse, travel between far-apart sites goes *through*
+   intermediate junctions, so shortest-path search is meaningful. All active
+   sites are always part of the network so distances are consistent between
+   plans and re-routes. Tunable via `ROUTING_CIRCUITY` / `ROUTING_NEIGHBOURS`.
+2. **Distance matrix** from Dijkstra (binary heap), Bellman-Ford or
+   Floyd-Warshall — they produce identical matrices (tested).
+   Distances can instead come from **OSRM** (real driving distances;
+   `ROUTING_PROVIDER=osrm`), with automatic fallback to the model. The site
+   matrix is cached; live vehicle positions attach to it as leaf points.
+3. **Daily plan.** Multi-start local search: a priority-seeded cheapest
+   insertion and three sweep (angular cluster) starts, each improved with
+   2-opt, relocate, swap and 2-opt* moves costed in O(1); routes are ordered
+   tier by tier (emergency → high → normal priority) and the shortest plan
+   wins. Every vehicle gets at most ceil(n / vehicles) + 1 stops.
+4. **Emergency re-route.** Current position → emergency site → remaining stops
+   re-optimised from the emergency site, compared against the old practice of
+   driving back to the last visited site and resuming the original order.
+
+Measured results ([`docs/evaluation/`](docs/evaluation/README.md), reproduce
+with `python -m evaluation.run`):
+
+- Plans are within **1.4–5.5% of Google OR-Tools** on 20–200 random sites,
+  in 0.003–0.6 s (OR-Tools was given 5–30 s); greedy and sweep heuristics are
+  20–55% worse.
+- The demo night is **102 km against a 232 km manual baseline** (56% less
+  mileage and CO2e); costed on real OSRM driving distances it is 118 km
+  against 228 km (48% less).
+- Re-routing after an emergency saves a **median 6.6 km per alarm** on real
+  roads (1,000 simulated alarms; 96% of them see a saving).
+- The road model's distances are within 12–15% of real ones on average
+  (r = 0.96–0.99); 1.3 is the best-fitting circuity factor.
+
+---
+
+## Quick start (Docker)
 
 ```bash
-cp .env.example .env          # then edit secrets/keys
+cp .env.example .env          # edit secrets/keys
 docker compose up --build
 ```
 
-- API: http://localhost:8000/api/v1/
-- API docs (Swagger): http://localhost:8000/api/docs/
+- Dashboard: http://localhost:3000 — `admin` / `admin12345`
+- API: http://localhost:8000/api/v1/ · Swagger: http://localhost:8000/api/docs/
 - Django admin: http://localhost:8000/admin/
-- Dashboard: http://localhost:3000/
 
-Demo data is seeded automatically. Log in with **`admin` / `admin12345`**.
+Demo data (fleet, 20 Singapore sites, two weeks of patrol history, tonight's
+in-progress plan, an active alarm, incidents, messages) is seeded on first boot.
 
-## Local development (without Docker)
+## Local development
 
-**Backend**
+**Backend** (Python 3.11+)
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate            # Windows  (source .venv/bin/activate on *nix)
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# Use sqlite for a zero-dependency run, or set MySQL vars in .env
-set USE_SQLITE=True               # PowerShell: $env:USE_SQLITE="True"
+export USE_SQLITE=True DJANGO_DEBUG=True             # PowerShell: $env:USE_SQLITE="True"
 python manage.py migrate
-python manage.py seed_demo
+python manage.py seed_demo            # --reset to start over
 python manage.py runserver
+python manage.py test                 # backend test-suite
 ```
 
-**Frontend**
+**Dashboard**
 
 ```bash
 cd frontend
-cp .env.example .env              # set REACT_APP_GOOGLE_MAPS_API_KEY
+cp .env.example .env                  # optional REACT_APP_GOOGLE_MAPS_API_KEY
 npm install --legacy-peer-deps
 npm start
+```
+
+**Duty-phone app** — see [`mobile/README.md`](mobile/README.md):
+
+```bash
+cd mobile
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1   # guard1 / guard12345
+```
+
+**Nightly automation**
+
+```bash
+# crontab: plan tonight's patrol at 21:00 with every operational vehicle
+0 21 * * *  cd /app && python manage.py plan_daily --algorithm dijkstra
 ```
 
 ---
 
 ## Configuration
 
-All settings are environment-driven — see [`.env.example`](.env.example).
+All settings are environment variables — see [`.env.example`](.env.example).
 
 | Variable | Purpose |
 |----------|---------|
-| `USE_SQLITE` | `True` to skip MySQL for quick local runs |
+| `USE_SQLITE` | `True` to skip MySQL for local runs |
 | `MYSQL_*` | Database connection |
-| `LLM_API_KEY` | OpenAI-compatible key. **Empty = mock AI mode** |
-| `LLM_BASE_URL` / `LLM_TEXT_MODEL` / `LLM_VISION_MODEL` | LLM provider/model |
-| `GOOGLE_MAPS_API_KEY` / `REACT_APP_GOOGLE_MAPS_API_KEY` | Live-map rendering |
+| `COMMAND_CENTRE_PHONE` | Number the duty phone's *Call* button dials |
+| `ROUTING_PROVIDER` | `road_network` (offline model, default) or `osrm` (real driving distances, falls back to the model) |
+| `OSRM_URL` | OSRM server for `osrm` (the public demo server by default; run your own in production) |
+| `ROUTING_CIRCUITY`, `ROUTING_NEIGHBOURS` | Road-network model (1.3 is the best fit to real Singapore roads, see the evaluation) |
+| `DISTANCE_CACHE_SECONDS` | How long a site distance matrix is cached |
+| `LOGIN_THROTTLE_RATE` | Login attempts allowed per client (default `20/min`) |
+| `DJANGO_HTTPS` | `True` behind TLS: secure cookies, HSTS, HTTPS redirect |
+| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_TEXT_MODEL`, `LLM_VISION_MODEL` | OpenAI-compatible LLM. **Empty key = deterministic offline mode** |
+| `GOOGLE_MAPS_API_KEY` / `REACT_APP_GOOGLE_MAPS_API_KEY` | Google Maps on the dashboard (schematic map otherwise) |
 | `CORS_ALLOWED_ORIGINS` | Dashboard origin(s) |
 
 ---
 
-## AI integration
+## Architecture
 
-Two layers, both degradable to a deterministic mock when `LLM_API_KEY` is empty:
+```
+ React dashboard (admins)        Flutter duty phone (guards, 1 per vehicle)
+          │  JWT / REST                         │
+          └──────────────┬──────────────────────┘
+                         ▼
+   Django REST API  /api/v1
+   ├── accounts   User (admin/guard), SecurityGuard ↔ Vehicle
+   ├── fleet      Vehicle, Location
+   ├── patrol     PatrolPlan, PatrolStop, PatrolRecord (+ photos), VehiclePing
+   │              services.py ← single place for planning / check-in / dispatch
+   ├── incidents  IncidentReport (+ photos, AI triage), EmergencyAlert
+   ├── comms      Message (vehicle ↔ command centre)
+   ├── agent      AI agent: tools, decision loop, pending actions, autonomy
+   └── core       routing, emissions, LLM services; dashboard & reports
+                         ▼
+                      MySQL 8
+```
 
-1. **The agent (`agent/`)** — the system's brain. Operators drive the platform
-   in natural language via the **AI Assistant** dashboard page (`/assistant`),
-   and the agent autonomously reacts to serious incidents. See
-   "[The AI Agent is the core](#the-ai-agent-is-the-core)".
+Permissions: admins have full access. Guards can only read their own
+vehicle's stops, records, pings, messages and their own incident reports, and
+cannot reach planning, fleet management, dashboards or the agent.
 
-2. **Incident triage (`core.services.llm`)** — when a guard submits a report
-   (text + optional photos), it is classified into a validated schema:
-   `category`, `severity`, `summary`, `recommended_action`, `anomaly_detected`,
-   `tags`, `source`. Reports also get an LLM-written executive narrative.
+### Architecture decisions
 
----
+| Decision | Why | Where |
+|---|---|---|
+| **One service layer per domain** | Planning, check-in, dispatch and triage rules exist once; the API, the AI agent, `plan_daily` and the seeder all call them. | `patrol/services.py`, `incidents/services.py` |
+| **Domain events between apps** | `incidents` publishes `incident_triaged` (the agent subscribes); `patrol` publishes `vehicle_dispatched` (messaging subscribes). Core logic no longer imports the agent or messaging, and a failing agent can never break incident intake. | `*/signals.py`, `*/receivers.py` |
+| **Pluggable distance providers** | The offline road-network model is deterministic and demonstrates the three shortest-path algorithms; OSRM gives real driving distances. If OSRM is down, planning falls back to the model. | `core/services/distance.py` |
+| **Cached site matrix, vehicles as leaf points** | The matrix depends only on site coordinates, so it is cached under a fingerprint of them and never needs manual invalidation. Live GPS positions attach as leaves, so a moving vehicle does not force a recompute. | `patrol.services.site_matrix`, `routing.attach_points` |
+| **O(1) move costs, multi-start local search** | Insertion, removal, 2-opt, swap and 2-opt* are costed from the matrix in constant time; 500 sites plan within the 5 s search budget. | `core/services/routing.py` |
+| **Row locks on state changes** | Alerts, plans, stops and sites are locked while changed. Only an active alert can be dispatched, so two operators (or an operator and the agent) cannot divert two vehicles to one emergency. | `patrol/services.py` |
+| **Human in the loop for AI writes** | The agent proposes; an operator confirms. Every tool call is stored for audit. | `agent/` |
+| **Secure defaults** | Role-scoped querysets, login rate limit, a deploy check that refuses the development `SECRET_KEY`, HTTPS settings behind `DJANGO_HTTPS`, a health check that probes the database. | `core/permissions.py`, `core/checks.py` |
 
-## Key API endpoints (v1)
+Not done yet, in order of value: a task queue (Celery or RQ) so LLM calls and
+very large plans leave the request cycle; push updates (WebSockets, or FCM for
+the phones) instead of polling; a shared Redis cache across Gunicorn workers
+(the default cache is per process); a production frontend container behind
+nginx.
+
+### Key endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/auth/token/` | Obtain JWT (username/password) |
-| GET | `/me/` | Current user profile |
-| GET/POST | `/vehicles/`, `/locations/` | Fleet CRUD |
-| GET/POST | `/plans/` | Patrol plans |
-| POST | `/plans/{id}/plan_route/` | Auto-generate optimised route |
-| POST | `/pings/` | Real-time position (mobile) |
-| GET | `/pings/live/` | Latest vehicle positions (map) |
-| POST | `/incidents/` | Submit report → AI analysis |
-| POST | `/routing/shortest-path/` | Shortest path between two locations |
-| POST | `/routing/compare-emissions/` | Plan CO₂e comparison |
-| GET | `/reports/patrol/?period=daily\|monthly` | Report + AI narrative |
-| GET | `/dashboard/summary/` | Dashboard KPIs |
-| POST | `/agent/chat/` | **Talk to the AI agent** (tool-calling) |
-| GET | `/agent/actions/?status=pending` | Pending actions (incl. autonomous) |
-| POST | `/agent/actions/{id}/confirm/` | Confirm & execute a proposed action |
-| POST | `/agent/actions/{id}/reject/` | Reject a proposed action |
+| POST | `/auth/token/` | JWT login |
+| GET | `/me/` | Profile (+ linked vehicle) |
+| CRUD | `/vehicles/`, `/locations/`, `/guards/` | Fleet management |
+| POST | `/plans/auto_daily/` | Create + auto-route tonight's plan |
+| POST | `/plans/{id}/plan_route/` · `/manual_route/` · `/rebalance/` | Re-plan, manual plan, rebalance |
+| GET/POST | `/alerts/` | Emergency noticeboard / raise |
+| POST | `/alerts/{id}/dispatch/` · `/resolve/` | Divert + re-route / close |
+| POST | `/locations/{id}/trigger_emergency/` | Site alarm |
+| GET | `/mobile/route/` | Duty phone: route + next stop |
+| POST | `/stops/{id}/check_in/` | Visit + site photos |
+| POST | `/pings/` · GET `/pings/live/` | GPS in / live positions out |
+| GET/POST | `/messages/` · `/messages/inbox/` | Messaging |
+| CRUD | `/incidents/` | Incident reports + AI triage |
+| GET | `/records/` | Past patrol records |
+| GET | `/dashboard/summary/` · `/dashboard/emissions/` | KPIs, alerts, carbon |
+| GET | `/reports/patrol/?period=daily\|monthly[&export=csv]` | Reports |
+| POST | `/routing/shortest-path/` · `/routing/compare-emissions/` | Algorithms, emissions |
+| POST | `/agent/chat/` · `/agent/actions/{id}/confirm/` | AI agent |
 
-Full, always-current contract at **`/api/docs/`**. See
-[`docs/MOBILE_API.md`](docs/MOBILE_API.md) for the Flutter integration guide.
+Full, always-current contract at `/api/docs/`; mobile guide in
+[`docs/MOBILE_API.md`](docs/MOBILE_API.md).
 
----
+## AI agent
 
-## Tech stack
+The **AI Assistant** page talks to "Sentinel", an LLM tool-calling agent whose
+tools wrap the same service layer (plans, alerts, dispatch, routes, incidents,
+emissions, reports). Read tools run immediately; write tools are queued as
+pending actions for an operator to confirm. When a high/critical incident is
+reported at a site, the agent raises an emergency alert and proposes
+dispatching the nearest operational vehicle. Without `LLM_API_KEY` a
+deterministic keyword router (English and Chinese) keeps it fully demoable.
 
-- **Backend**: Django 4.2, Django REST Framework, SimpleJWT, drf-spectacular
-- **DB**: MySQL 8 (PyMySQL driver; sqlite fallback)
-- **AI**: OpenAI-compatible SDK (text + vision), mock fallback
-- **Frontend**: React 18, MUI, Nivo charts, `@react-google-maps/api`
-- **Infra**: Docker Compose (db + web + frontend), Gunicorn
+## Tests
+
+```bash
+USE_SQLITE=True python manage.py test        # 76 backend + evaluation tests
+cd frontend && CI=true npm run build         # dashboard build (warnings fail)
+cd mobile && flutter analyze && flutter test # duty-phone app
+```
+
+CI runs all three on every push (`.github/workflows/ci.yml`), plus a smoke
+run of the evaluation. The full evaluation needs the development extras:
+
+```bash
+pip install -r requirements-dev.txt          # OR-Tools, matplotlib
+python -m evaluation.run                     # ~8 min; writes docs/evaluation/
+```

@@ -14,6 +14,7 @@ class LocationAdmin(admin.ModelAdmin):
 class VehicleAdmin(admin.ModelAdmin):
     list_display = [
         "plate_number",
+        "model_name",
         "engine_type",
         "maintenance_status",
         "is_available",
